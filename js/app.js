@@ -90,7 +90,7 @@
   function showStatus(kind, title, body) {
     const el = $('status');
     el.className = 'status ' + kind;
-    el.replaceChildren(h('strong', null, title), body ? h('span', null, body) : null);
+    el.replaceChildren(...[h('strong', null, title), body ? h('span', null, body) : null].filter(Boolean));
   }
   function clearStatus() { const el = $('status'); el.className = 'status'; el.replaceChildren(); }
 
