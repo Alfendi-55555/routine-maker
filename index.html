@@ -98,10 +98,16 @@
           </div>
           <p class="hint" id="tHint" aria-live="polite"></p>
           <label class="check"><input type="checkbox" id="tManual"> 이미 끝낸 일이에요 (실제 시간 직접 입력)</label>
-          <div class="field" id="tActualField" hidden>
-            <label for="tActual">실제로 걸린 시간 (분)</label>
-            <input id="tActual" inputmode="numeric" autocomplete="off" placeholder="80" aria-describedby="tActualErr">
-            <p class="err" id="tActualErr"></p>
+          <div class="grid2">
+            <div class="field" id="tDayField" hidden>
+              <label for="tDay">언제 했나요?</label>
+              <select id="tDay"></select>
+            </div>
+            <div class="field" id="tActualField" hidden>
+              <label for="tActual">실제로 걸린 시간 (분)</label>
+              <input id="tActual" inputmode="numeric" autocomplete="off" placeholder="80" aria-describedby="tActualErr">
+              <p class="err" id="tActualErr"></p>
+            </div>
           </div>
           <p class="err" id="taskFormErr"></p>
           <div class="row"><button type="submit" class="btn primary" id="tSubmit">시작</button></div>
@@ -134,6 +140,7 @@
                 <option value="4">주 4회</option><option value="5">주 5회</option><option value="6">주 6회</option>
                 <option value="7">매일</option>
               </select>
+              <p class="hint" id="rPerWeekHint" hidden>매일로 정하면 하루만 빠져도 그 주를 못 채운 걸로 세요. 주 6회로 하면 하루 쉴 틈이 생겨요.</p>
             </div>
           </div>
           <div class="grid2">
@@ -272,7 +279,8 @@
               <p class="err" id="sBufferErr"></p>
             </div>
           </div>
-          <p class="hint" id="sBufferHint">고정 일정 앞뒤로 이동·준비에 쓰는 시간이에요. 빈 시간에서 빼고 계산해요 (0~30분).</p>
+          <p class="hint" id="sBufferHint">전환 시간은 고정 일정 앞뒤로 이동·준비에 쓰는 시간이에요. 빈 시간에서 빼고 계산해요 (0~30분).</p>
+          <p class="hint">하루 끝은 새벽 2시처럼 자정을 넘겨도 돼요(새벽 4시까지). 그때까지 한 일은 전날 한 일로 쳐요.</p>
           <div class="row"><button type="submit" class="btn">설정 저장</button></div>
         </form>
       </section>

@@ -16,7 +16,8 @@
       blocks: [],
       routines: [],
       active: null,
-      records: []
+      records: [],
+      dismissed: []
     };
   }
 
@@ -26,9 +27,12 @@
   function isDate(v) { return typeof v === 'string' && !isNaN(Date.parse(v)); }
   function minOf(t) { return Number(t.slice(0, 2)) * 60 + Number(t.slice(3)); }
 
+  /* 하루 끝이 시작보다 이르면 자정을 넘긴 것: 새벽 4시까지만 허용 */
   function validSettings(s) {
-    return !!s && TIME.test(s.dayStart) && TIME.test(s.dayEnd) && minOf(s.dayStart) < minOf(s.dayEnd) &&
-      Number.isInteger(s.bufferMin) && s.bufferMin >= 0 && s.bufferMin <= 30;
+    if (!s || !TIME.test(s.dayStart) || !TIME.test(s.dayEnd)) return false;
+    var a = minOf(s.dayStart), b = minOf(s.dayEnd);
+    if (a === b || (b < a && (b > 240 || a < 240))) return false;
+    return Number.isInteger(s.bufferMin) && s.bufferMin >= 0 && s.bufferMin <= 30;
   }
   function validBlock(b) {
     return !!b && isStr(b.id) && isStr(b.name, 50) && typeof b.kind === 'string' &&
@@ -74,6 +78,8 @@
     if (!Array.isArray(d.routines) || !d.routines.every(validRoutine)) return false;
     if (d.active !== null && !validEntry(d.active, false)) return false;
     if (!Array.isArray(d.records) || !d.records.every(function (r) { return validEntry(r, true); })) return false;
+    // v2: 이번 주 넘긴 제안 목록 (없어도 됨)
+    if (d.dismissed != null && !(Array.isArray(d.dismissed) && d.dismissed.every(function (k) { return typeof k === 'string'; }))) return false;
     return true;
   }
 

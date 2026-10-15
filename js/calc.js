@@ -47,6 +47,43 @@
   function diffMin(a, b) { return (new Date(b).getTime() - new Date(a).getTime()) / 60000; }
   function byStart(a, b) { return Date.parse(a.startedAt) - Date.parse(b.startedAt); }
 
+  // ---------- 앱 안의 하루 (자정을 넘기는 하루 끝) ----------
+  var MAX_ROLLOVER = 4 * 60; // 하루 끝은 새벽 4시까지
+
+  /* 하루 끝(분). 하루 끝이 시작보다 이르면 다음 날로 보고 1440을 더한다. */
+  function dayEndMin(settings) {
+    var s = toMin(settings.dayStart), e = toMin(settings.dayEnd);
+    return e <= s ? e + 1440 : e;
+  }
+  /* 자정 뒤 몇 분까지 전날로 치는지 */
+  function rolloverMin(settings) { return Math.max(0, dayEndMin(settings) - 1440); }
+
+  /* 지금이 앱 안에서 어느 날 몇 분인지. 새벽 1시에 하루 끝이 2시면 전날 25:00(=1500분)으로 본다. */
+  function logical(now, settings) {
+    var shift = rolloverMin(settings);
+    var shifted = new Date(new Date(now).getTime() - shift * 60000);
+    var day = startOfDay(shifted);
+    return {
+      shift: shift,
+      day: day,
+      weekday: day.getDay(),
+      nowMin: Math.round((new Date(now).getTime() - day.getTime()) / 60000)
+    };
+  }
+  /* 기록 시각을 앱 안의 날짜로 */
+  function logicalKey(iso, shift) { return dayKey(new Date(Date.parse(iso) - (shift || 0) * 60000)); }
+
+  /* 하루 설정 검사: null 또는 { field, msg } */
+  function checkSettings(dayStart, dayEnd) {
+    if (isNaN(toMin(dayStart))) return { field: 'start', msg: '하루 시작 시각을 골라 주세요' };
+    if (isNaN(toMin(dayEnd))) return { field: 'end', msg: '하루 끝 시각을 골라 주세요' };
+    var s = toMin(dayStart), e = toMin(dayEnd);
+    if (e === s) return { field: 'end', msg: '하루 끝은 시작과 달라야 해요' };
+    if (e < s && e > MAX_ROLLOVER) return { field: 'end', msg: '자정을 넘긴다면 하루 끝은 새벽 4시 전이어야 해요' };
+    if (e < s && s < MAX_ROLLOVER) return { field: 'start', msg: '하루 시작은 새벽 4시 이후로 골라 주세요' };
+    return null;
+  }
+
   // ---------- 고정 일정과 빈 시간 ----------
   function dayBlocks(blocks, weekday) {
     return blocks.filter(function (b) { return b.days.indexOf(weekday) !== -1; })
@@ -56,7 +93,7 @@
   /* 하루 활동 시간에서 고정 일정(앞뒤 전환 시간 포함)을 빼고 남는 빈 시간.
    * nowMin을 주면 각 빈 시간에 state(past/now/future)와 remaining(남은 분)을 붙인다. */
   function computeGaps(blocks, weekday, settings, nowMin) {
-    var ds = toMin(settings.dayStart), de = toMin(settings.dayEnd), buf = settings.bufferMin;
+    var ds = toMin(settings.dayStart), de = dayEndMin(settings), buf = settings.bufferMin;
     var busy = dayBlocks(blocks, weekday).map(function (b) {
       return [Math.max(ds, toMin(b.start) - buf), Math.min(de, toMin(b.end) + buf)];
     }).filter(function (p) { return p[1] > p[0]; });
@@ -126,10 +163,14 @@
   }
 
   // ---------- 앵커 ----------
-  function anchorToday(routine, blocks, weekday) {
+  /* shift: 자정 뒤 전날로 치는 분. 시각 앵커가 그보다 이르면(예: 00:30) 앱 안의 하루 끝 쪽(24:30)으로 본다. */
+  function anchorToday(routine, blocks, weekday, shift) {
     var a = routine.anchor;
     if (!a) return { type: 'none' };
-    if (a.type === 'time') return { type: 'time', today: true, plannedMin: toMin(a.time), time: a.time };
+    if (a.type === 'time') {
+      var t = toMin(a.time);
+      return { type: 'time', today: true, plannedMin: t < (shift || 0) ? t + 1440 : t, time: a.time };
+    }
     var b = blocks.filter(function (x) { return x.id === a.blockId; })[0];
     if (!b) return { type: 'none' };
     if (b.days.indexOf(weekday) === -1) return { type: 'block', today: false, block: b };
@@ -158,52 +199,92 @@
   }
 
   // ---------- 달성과 놓침 ----------
-  function daysDone(records, routineId, from, to) {
+  /* 모든 날짜 계산은 앱 안의 하루 기준. shift(분)만큼 시각을 당겨서 본다. */
+  function shifted(d, shift) { return new Date(new Date(d).getTime() - (shift || 0) * 60000); }
+
+  function daysDone(records, routineId, from, to, shift) {
     var set = {};
     records.forEach(function (r) {
       if (r.routineId !== routineId) return;
-      var t = Date.parse(r.startedAt);
-      if (t >= from.getTime() && t < to.getTime()) set[dayKey(r.startedAt)] = true;
+      var t = Date.parse(r.startedAt) - (shift || 0) * 60000;
+      if (t >= from.getTime() && t < to.getTime()) set[dayKey(t)] = true;
     });
     return Object.keys(set).length;
   }
-  function weekDone(records, routineId, now) {
-    var ws = startOfWeek(now);
-    return daysDone(records, routineId, ws, addDays(ws, 7));
+  function weekDone(records, routineId, now, shift) {
+    var ws = startOfWeek(shifted(now, shift));
+    return daysDone(records, routineId, ws, addDays(ws, 7), shift);
   }
-  function doneOn(records, routineId, day) {
+  /* day: 앱 안의 날짜(자정 기준 Date) */
+  function doneOn(records, routineId, day, shift) {
     var s = startOfDay(day);
-    return daysDone(records, routineId, s, addDays(s, 1)) > 0;
+    return daysDone(records, routineId, s, addDays(s, 1), shift) > 0;
   }
 
   /* 지난 4주(이번 주 제외), 오래된 주부터. state: done | miss | none(루틴을 만들기 전) */
-  function lastWeeks(records, routine, now, count) {
+  function lastWeeks(records, routine, now, count, shift) {
     count = count || 4;
-    var out = [], thisWeek = startOfWeek(now), created = Date.parse(routine.createdAt);
+    var out = [], thisWeek = startOfWeek(shifted(now, shift)), created = Date.parse(routine.createdAt) - (shift || 0) * 60000;
     for (var i = count; i >= 1; i--) {
       var ws = addDays(thisWeek, -7 * i), we = addDays(ws, 7);
       if (created >= we.getTime()) { out.push({ weekStart: ws, count: 0, state: 'none' }); continue; }
-      var c = daysDone(records, routine.id, ws, we);
+      var c = daysDone(records, routine.id, ws, we, shift);
       out.push({ weekStart: ws, count: c, state: c >= routine.perWeek ? 'done' : 'miss' });
     }
     return out;
   }
 
   /* 매일 루틴을 어제 놓쳤는지. 어제가 시작되기 전에 만든 루틴만 본다. */
-  function missedYesterday(records, routine, now) {
+  function missedYesterday(records, routine, now, shift) {
     if (routine.perWeek !== 7) return false;
-    var y = addDays(startOfDay(now), -1);
-    if (Date.parse(routine.createdAt) >= y.getTime()) return false;
-    return !doneOn(records, routine.id, y);
+    var y = addDays(startOfDay(shifted(now, shift)), -1);
+    if (Date.parse(routine.createdAt) - (shift || 0) * 60000 >= y.getTime()) return false;
+    return !doneOn(records, routine.id, y, shift);
   }
 
   /* 주 N회 루틴: 이번 주 남은 횟수가 남은 날수보다 많은지 */
-  function weekTight(routine, done, doneToday, now) {
+  function weekTight(routine, done, doneToday, now, shift) {
     if (routine.perWeek >= 7) return null;
     var left = routine.perWeek - done;
     if (left <= 0) return null;
-    var daysLeft = 7 - mondayIndex(now) - (doneToday ? 1 : 0);
+    var daysLeft = 7 - mondayIndex(shifted(now, shift)) - (doneToday ? 1 : 0);
     return left > daysLeft ? { left: left, daysLeft: daysLeft } : null;
+  }
+
+  // ---------- 규칙 다듬기 제안 ----------
+  /* 기록에 근거한 제안만. 횟수를 올리자는 제안은 하지 않는다(목표는 행동, 기록이 좋다고 목표를 키우지 않음).
+   * 반환: [{ key, routineId, kind: 'perWeek'|'baseMin'|'steady', from, to }] */
+  function suggestions(records, routines, now, shift) {
+    var out = [];
+    var wk = dayKey(startOfWeek(shifted(now, shift)));
+    routines.forEach(function (r) {
+      var weeks = lastWeeks(records, r, now, 4, shift);
+      var last2 = weeks.slice(-2);
+      if (r.perWeek > 1 && last2.every(function (w) { return w.state === 'miss'; })) {
+        var avg = (last2[0].count + last2[1].count) / 2;
+        var to = Math.max(1, Math.round(avg));
+        if (to < r.perWeek && avg <= r.perWeek - 1) {
+          out.push({ key: wk + '|' + r.id + '|perWeek', routineId: r.id, kind: 'perWeek', from: r.perWeek, to: to, counts: last2.map(function (w) { return w.count; }) });
+        }
+      }
+      if (weeks.every(function (w) { return w.state === 'done'; })) {
+        out.push({ key: wk + '|' + r.id + '|steady', routineId: r.id, kind: 'steady' });
+      }
+      var base = records.filter(function (x) { return x.routineId === r.id && x.version !== 'min'; }).sort(byStart).slice(-5);
+      if (base.length >= 5) {
+        var med = median(base.map(function (x) { return x.actualMin; }));
+        var next = round5(med);
+        if (Math.abs(med - r.baseMin) / r.baseMin >= 0.2 && Math.abs(next - r.baseMin) >= 5 && next > r.minMin && next <= 720) {
+          out.push({ key: wk + '|' + r.id + '|baseMin', routineId: r.id, kind: 'baseMin', from: r.baseMin, to: next, median: med });
+        }
+      }
+    });
+    return out;
+  }
+
+  /* 타이머를 늦게 끈 것 같은지: 12시간 초과, 또는 예상의 2배를 넘고 30분 이상 더 걸림 */
+  function looksTooLong(estimateMin, elapsedMin) {
+    return elapsedMin > 720 || (elapsedMin > estimateMin * 2 && elapsedMin - estimateMin >= 30);
   }
 
   // ---------- 측정 ----------
@@ -319,6 +400,8 @@
     pad: pad, toMin: toMin, fmtHM: fmtHM, fmtDuration: fmtDuration, round1: round1, round5: round5, median: median,
     startOfDay: startOfDay, addDays: addDays, mondayIndex: mondayIndex, startOfWeek: startOfWeek, dayKey: dayKey,
     minutesOfDay: minutesOfDay, atMinutes: atMinutes, diffMin: diffMin,
+    MAX_ROLLOVER: MAX_ROLLOVER, dayEndMin: dayEndMin, rolloverMin: rolloverMin, logical: logical, logicalKey: logicalKey,
+    checkSettings: checkSettings, suggestions: suggestions, looksTooLong: looksTooLong,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,
     ratioOf: ratioOf, calibration: calibration, predict: predict, fit: fit, categoryStats: categoryStats,
     anchorToday: anchorToday, pickGap: pickGap,

@@ -247,3 +247,18 @@ h4 { margin: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .progress > span { transition: width 0.6s linear; }
 }
+
+/* v2: 지금 카드, 제안 알림, 주별 막대 */
+.now-card { border-color: var(--accent); }
+.now-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; }
+.banner { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; background: var(--accent-soft); border-radius: var(--radius); padding: 10px 14px; font-size: 0.92rem; }
+li.suggest { display: grid; gap: 8px; }
+.weekbars-wrap { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: flex-end; }
+.weekbars { display: inline-flex; gap: 6px; align-items: flex-end; }
+.wb { display: grid; gap: 2px; justify-items: center; }
+.wb-track { width: 14px; height: 28px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; display: block; }
+.wb-fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--ink); display: block; }
+.wb.none .wb-track { background: transparent; border: 1px dotted var(--line); }
+.wb-num { font-size: 0.72rem; color: var(--muted); line-height: 1; }
+.rec-del { display: inline-flex; gap: 2px; }
+.rec .panel { grid-column: 1 / -1; }

@@ -263,3 +263,81 @@ test('예시 데이터는 저장소 구조 검사를 통과하고, 관찰 문장
   assert.equal(Calc.observeDuration(d.records, review).ready, true);
   assert.equal(JSON.stringify(Sample.build(new Date(2026, 9, 16, 21))), JSON.stringify(d), '매번 같은 결과');
 });
+
+// ---------- v2: 앱 안의 하루 ----------
+test('v2 하루 끝이 자정을 넘기면 그 전까지는 전날로 본다', () => {
+  const s = { dayStart: '08:00', dayEnd: '02:00', bufferMin: 10 };
+  assert.equal(Calc.dayEndMin(s), 26 * 60);
+  assert.equal(Calc.rolloverMin(s), 120);
+  const L = Calc.logical(new Date(2026, 9, 17, 1, 30), s); // 토 01:30 → 금요일 25:30
+  assert.equal(L.weekday, 5);
+  assert.equal(L.nowMin, 25 * 60 + 30);
+  const gaps = Calc.computeGaps([], 5, s, L.nowMin);
+  assert.equal(gaps[0].state, 'now');
+  assert.equal(gaps[0].remaining, 30);
+});
+
+test('v2 자정 넘어 한 기록은 전날 달성으로 센다', () => {
+  const routine = { id: 'r1', perWeek: 7, createdAt: iso(2026, 10, 1) };
+  const rs = [rec({ startedAt: iso(2026, 10, 16, 0, 40) })]; // 금 00:40 = 목요일의 늦은 밤
+  const fri = new Date(2026, 9, 16, 20);
+  assert.equal(Calc.missedYesterday(rs, routine, fri, 120), false);
+  assert.equal(Calc.missedYesterday(rs, routine, fri, 0), true);
+  assert.equal(Calc.doneOn(rs, 'r1', new Date(2026, 9, 15), 120), true);
+});
+
+test('v2 시각 앵커가 자정 뒤면 하루 끝 쪽으로', () => {
+  const r = { anchor: { type: 'time', time: '00:30' } };
+  assert.equal(Calc.anchorToday(r, [], 1, 120).plannedMin, 24 * 60 + 30);
+  assert.equal(Calc.anchorToday(r, [], 1, 0).plannedMin, 30);
+});
+
+test('v2 하루 설정 검사', () => {
+  assert.equal(Calc.checkSettings('08:00', '23:00'), null);
+  assert.equal(Calc.checkSettings('08:00', '02:00'), null);
+  assert.equal(Calc.checkSettings('08:00', '05:00').msg, '자정을 넘긴다면 하루 끝은 새벽 4시 전이어야 해요');
+  assert.equal(Calc.checkSettings('08:00', '08:00').field, 'end');
+  const d = Store.empty();
+  d.settings.dayEnd = '02:00';
+  assert.equal(Store.validate(d), true);
+  d.settings.dayEnd = '06:00';
+  assert.equal(Store.validate(d), false);
+});
+
+// ---------- v2: 기록 정직하게 ----------
+test('v2 타이머를 늦게 끈 것 같은지', () => {
+  assert.equal(Calc.looksTooLong(30, 59), false);
+  assert.equal(Calc.looksTooLong(30, 61), true);
+  assert.equal(Calc.looksTooLong(10, 25), false, '2배를 넘어도 30분 미만 차이는 그대로');
+  assert.equal(Calc.looksTooLong(600, 721), true);
+});
+
+// ---------- v2: 규칙 다듬기 제안 ----------
+test('v2 2주 연속 못 채우면 횟수를 낮추자고 제안한다', () => {
+  const now = new Date(2026, 9, 19, 9); // 월
+  const r = { id: 'r1', perWeek: 3, baseMin: 45, minMin: 10, createdAt: iso(2026, 9, 1) };
+  const rs = [rec({ startedAt: iso(2026, 10, 6) }), rec({ startedAt: iso(2026, 10, 14) })]; // 지난 2주 각 1회
+  const s = Calc.suggestions(rs, [r], now, 0);
+  const p = s.find((x) => x.kind === 'perWeek');
+  assert.equal(p.to, 1);
+  assert.deepEqual(p.counts, [1, 1]);
+  assert.match(p.key, /^2026-10-19\|r1\|perWeek$/);
+});
+
+test('v2 최근 기본 시간이 계획과 20% 넘게 다르면 기본 시간을 바꾸자고 제안한다', () => {
+  const now = new Date(2026, 9, 19, 9);
+  const r = { id: 'r1', perWeek: 1, baseMin: 30, minMin: 10, createdAt: iso(2026, 10, 1) };
+  const rs = [38, 41, 40, 39, 44].map((m, i) => rec({ startedAt: iso(2026, 10, 10 + i), actualMin: m }));
+  const b = Calc.suggestions(rs, [r], now, 0).find((x) => x.kind === 'baseMin');
+  assert.equal(b.to, 40);
+  const close = [31, 33, 30, 32, 34].map((m, i) => rec({ startedAt: iso(2026, 10, 10 + i), actualMin: m }));
+  assert.equal(Calc.suggestions(close, [r], now, 0).find((x) => x.kind === 'baseMin'), undefined);
+});
+
+test('v2 4주 내내 채우면 사실만 알리고 횟수를 올리자고 하지 않는다', () => {
+  const now = new Date(2026, 9, 19, 9);
+  const r = { id: 'r1', perWeek: 1, baseMin: 30, minMin: 10, createdAt: iso(2026, 9, 1) };
+  const rs = [iso(2026, 9, 22), iso(2026, 9, 29), iso(2026, 10, 6), iso(2026, 10, 13)].map((t) => rec({ startedAt: t }));
+  const kinds = Calc.suggestions(rs, [r], now, 0).map((x) => x.kind);
+  assert.deepEqual(kinds, ['steady']);
+});

@@ -80,8 +80,8 @@
 
     return {
       version: 1,
-      settings: { dayStart: '08:00', dayEnd: '23:30', bufferMin: 10 },
-      blocks: blocks, routines: routines, active: null, records: records
+      settings: { dayStart: '08:00', dayEnd: '01:00', bufferMin: 10 },
+      blocks: blocks, routines: routines, active: null, records: records, dismissed: []
     };
   }
 
