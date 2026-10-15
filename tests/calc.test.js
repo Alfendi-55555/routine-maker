@@ -250,3 +250,16 @@ test('가져오기: JSON이 아니거나 구조가 다르면 거부', () => {
   e.routines.push({ id: 'r1', name: 'a', category: 'b', perWeek: 3, baseMin: 10, minMin: 10, anchor: null, measure: { type: 'none' }, createdAt: iso(2026, 10, 1) });
   assert.equal(Store.parseImport(JSON.stringify(e)).ok, false, '최소가 기본보다 짧지 않음');
 });
+
+// ---------- 예시 데이터 ----------
+test('예시 데이터는 저장소 구조 검사를 통과하고, 관찰 문장이 나올 만큼 기록이 있다', () => {
+  const Sample = require('../js/sample.js');
+  const d = Sample.build(new Date(2026, 9, 16, 21));
+  assert.equal(Store.validate(d), true);
+  const words = d.routines.find(r => r.id === 'r_s2');
+  assert.equal(Calc.observeDuration(d.records, words).ready, true);
+  assert.equal(Calc.observeDelay(d.records, words).ready, true);
+  const review = d.routines.find(r => r.id === 'r_s1');
+  assert.equal(Calc.observeDuration(d.records, review).ready, true);
+  assert.equal(JSON.stringify(Sample.build(new Date(2026, 9, 16, 21))), JSON.stringify(d), '매번 같은 결과');
+});
