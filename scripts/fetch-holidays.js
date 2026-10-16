@@ -60,7 +60,11 @@ async function fetchMonth(key, year, month) {
 
 async function main() {
   const key = process.env.DATA_GO_KR_KEY;
-  if (!key) { console.error('DATA_GO_KR_KEY 환경 변수가 없어요.'); process.exit(1); }
+  if (!key) {
+    // 키를 아직 넣지 않았으면 실패로 남기지 않고 건너뛴다. Secrets에 넣으면 다음 실행부터 받아 온다
+    console.log('::notice::DATA_GO_KR_KEY가 없어서 공휴일 받기를 건너뛰어요. 저장소 Settings → Secrets → Actions에 키를 넣어 주세요.');
+    return;
+  }
   const thisYear = Number(new Date().toLocaleString('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric' }));
   const years = [thisYear, thisYear + 1];
   const all = [];

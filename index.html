@@ -24,6 +24,7 @@
     </div>
     <nav class="tabs" role="tablist" aria-label="화면">
       <button type="button" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true">오늘</button>
+      <button type="button" role="tab" id="tab-calendar" aria-controls="panel-calendar" aria-selected="false" tabindex="-1">캘린더</button>
       <button type="button" role="tab" id="tab-routines" aria-controls="panel-routines" aria-selected="false" tabindex="-1">루틴</button>
       <button type="button" role="tab" id="tab-week" aria-controls="panel-week" aria-selected="false" tabindex="-1">주간 틀</button>
       <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" tabindex="-1">돌아보기</button>
@@ -115,6 +116,29 @@
           </div>
           <p class="err" id="taskFormErr"></p>
           <div class="row"><button type="submit" class="btn primary" id="tSubmit">시작</button></div>
+        </form>
+      </section>
+    </section>
+
+    <!-- 캘린더: 공휴일과 기록한 날 -->
+    <section id="panel-calendar" role="tabpanel" aria-labelledby="tab-calendar" hidden>
+      <div id="calendarDyn"></div>
+
+      <section class="card" aria-labelledby="holidayH">
+        <h2 id="holidayH">공휴일 설정</h2>
+        <form id="holidayForm" novalidate>
+          <fieldset class="choice">
+            <legend>공휴일에 쉬는 고정 일정</legend>
+            <div class="row">
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="수업"> 수업</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="통학"> 통학</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="알바"> 알바</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="기타"> 기타</label>
+            </div>
+            <p class="hint">고른 종류는 공휴일에 빼고 빈 시간을 계산해요.</p>
+          </fieldset>
+          <p class="hint" id="holidayInfo"></p>
+          <div class="row"><button type="submit" class="btn">저장</button></div>
         </form>
       </section>
     </section>
@@ -285,16 +309,6 @@
           </div>
           <p class="hint" id="sBufferHint">전환 시간은 고정 일정 앞뒤로 이동·준비에 쓰는 시간이에요. 빈 시간에서 빼고 계산해요 (0~30분).</p>
           <p class="hint">하루 끝은 새벽 2시처럼 자정을 넘겨도 돼요(새벽 4시까지). 그때까지 한 일은 전날 한 일로 쳐요.</p>
-          <fieldset class="choice" id="sHolidaySet">
-            <legend>공휴일에 쉬는 고정 일정</legend>
-            <div class="row">
-              <label class="check"><input type="checkbox" name="sHolidayOff" value="수업"> 수업</label>
-              <label class="check"><input type="checkbox" name="sHolidayOff" value="통학"> 통학</label>
-              <label class="check"><input type="checkbox" name="sHolidayOff" value="알바"> 알바</label>
-              <label class="check"><input type="checkbox" name="sHolidayOff" value="기타"> 기타</label>
-            </div>
-            <p class="hint" id="holidayInfo"></p>
-          </fieldset>
           <div class="row"><button type="submit" class="btn">설정 저장</button></div>
         </form>
       </section>

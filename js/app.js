@@ -7,7 +7,7 @@
   const C = window.Calc;
   const S = window.Store;
   const BASE_CATEGORIES = ['과제', '공부', '복습', '시험 준비', '팀플', '기타'];
-  const TABS = ['today', 'routines', 'week', 'review'];
+  const TABS = ['today', 'calendar', 'routines', 'week', 'review'];
   const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
   const RECORDS_PAGE = 30;
   const KIND_ORDER = ['수업', '통학', '알바', '기타'];
@@ -25,6 +25,8 @@
     confirm: null,        // 삭제 확인 중인 항목 'r:<id>' | 'b:<id>'
     pendingImport: null,
     editRecord: null,     // 고치는 중인 기록 id
+    calMonth: null,       // 캘린더에 보이는 달 (그달 1일)
+    calSel: null,         // 캘린더에서 고른 날 'YYYY-MM-DD'
     lastMinute: -1
   };
   let timerTick = null;
@@ -127,17 +129,123 @@
         holidays.status = d.holidays.length ? 'ok' : 'empty';
       })
       .catch(() => { holidays.status = 'error'; })
-      .then(() => { renderToday(); renderWeek(); renderHolidayInfo(); });
+      .then(() => { renderToday(); renderCalendar(); renderHolidayInfo(); });
+  }
+  function holidayStatusText() {
+    return {
+      loading: '공휴일 정보를 불러오는 중이에요.',
+      ok: '공휴일 정보: 한국천문연구원 특일 정보 · ' + (holidays.updatedAt || '') + ' 갱신',
+      empty: '공휴일 정보가 아직 없어요. 저장소에 공공데이터포털 인증키를 넣으면 GitHub Actions가 받아 와요.',
+      error: '공휴일 정보를 불러오지 못했어요. index.html을 파일로 열면 불러올 수 없고, 배포된 주소에서는 자동으로 반영돼요.'
+    }[holidays.status];
   }
   function renderHolidayInfo() {
     const el = $('holidayInfo');
-    if (!el) return;
-    el.textContent = {
-      loading: '공휴일 정보를 불러오는 중이에요.',
-      ok: '공휴일 정보: 한국천문연구원 특일 정보 · ' + (holidays.updatedAt || '') + ' 갱신',
-      empty: '공휴일 정보가 아직 없어요. 배포 후 GitHub Actions가 처음 실행되면 채워져요.',
-      error: '공휴일 정보를 불러오지 못했어요. index.html을 파일로 열면 불러올 수 없고, 배포된 주소에서는 자동으로 반영돼요.'
-    }[holidays.status];
+    if (el) el.textContent = holidayStatusText();
+  }
+
+  // ========== 캘린더 ==========
+  /* 월별 달력: 공휴일과 기록한 날을 보여 주고, 날짜를 누르면 그날 고정 일정과 기록 */
+  function renderCalendar() {
+    const box = $('calendarDyn');
+    if (!box) return;
+    const L = nowL();
+    const todayKey = C.dayKey(L.day);
+    if (!ui.calMonth) ui.calMonth = new Date(L.day.getFullYear(), L.day.getMonth(), 1);
+    if (!ui.calSel) ui.calSel = todayKey;
+    const y = ui.calMonth.getFullYear(), mo = ui.calMonth.getMonth();
+    const first = new Date(y, mo, 1);
+    const gridStart = C.addDays(first, -C.mondayIndex(first));
+    const weeks = Math.ceil((C.mondayIndex(first) + new Date(y, mo + 1, 0).getDate()) / 7);
+
+    const byDay = {};
+    state.records.forEach((r) => { const k = C.logicalKey(r.startedAt, L.shift); (byDay[k] = byDay[k] || []).push(r); });
+    const hmap = {};
+    holidays.list.forEach((x) => { hmap[x.date] = x.name; });
+
+    const move = (n) => { ui.calMonth = new Date(y, mo + n, 1); renderCalendar(); };
+    const head = h('div', { class: 'cal-head' },
+      h('button', { type: 'button', class: 'btn small ghost', onclick: () => move(-1), 'aria-label': '이전 달' }, '‹ 이전'),
+      h('h2', { id: 'calTitle', 'aria-live': 'polite' }, y + '년 ' + (mo + 1) + '월'),
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'btn small', onclick: () => { ui.calMonth = null; ui.calSel = null; renderCalendar(); } }, '오늘'),
+        h('button', { type: 'button', class: 'btn small ghost', onclick: () => move(1), 'aria-label': '다음 달' }, '다음 ›')));
+
+    const rows = [];
+    for (let w = 0; w < weeks; w++) {
+      rows.push(h('tr', null, [0, 1, 2, 3, 4, 5, 6].map((i) => {
+        const d = C.addDays(gridStart, w * 7 + i);
+        const k = C.dayKey(d);
+        const hol = hmap[k];
+        const recs = byDay[k] || [];
+        const label = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + C.DAY_NAMES[d.getDay()] + '요일' +
+          (hol ? ', ' + hol : '') + (recs.length ? ', 기록 ' + recs.length + '개' : '') + (k === todayKey ? ', 오늘' : '');
+        return h('td', null, h('button', {
+          type: 'button',
+          class: 'cal-day' + (d.getMonth() === mo ? '' : ' out') + (k === todayKey ? ' today' : '') +
+            (k === ui.calSel ? ' sel' : '') + (hol || d.getDay() === 0 ? ' red' : ''),
+          'aria-pressed': String(k === ui.calSel), 'aria-label': label,
+          onclick: () => {
+            ui.calSel = k;
+            if (d.getMonth() !== mo) ui.calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+            renderCalendar();
+            const again = document.querySelector('.cal-day.sel');
+            if (again) again.focus();
+          }
+        },
+        h('span', { class: 'cal-num', 'aria-hidden': 'true' }, String(d.getDate())),
+        hol ? h('span', { class: 'cal-hol', 'aria-hidden': 'true' }, hol) : null,
+        recs.length ? h('span', { class: 'cal-dots', 'aria-hidden': 'true' }, '●'.repeat(Math.min(3, recs.length)) + (recs.length > 3 ? '+' : '')) : null));
+      })));
+    }
+    const table = h('table', { class: 'cal' },
+      h('caption', { class: 'sr-only' }, y + '년 ' + (mo + 1) + '월 달력'),
+      h('thead', null, h('tr', null, DAY_ORDER.map((d) => h('th', { scope: 'col', class: d === 0 ? 'red' : '' }, C.DAY_NAMES[d])))),
+      h('tbody', null, rows));
+
+    box.replaceChildren(
+      h('h2', { class: 'sr-only' }, '캘린더'),
+      h('section', { class: 'card', 'aria-labelledby': 'calTitle' }, head, table,
+        h('div', { class: 'legend' }, h('span', { class: 'lg-hol' }, '공휴일'), h('span', { class: 'lg-dot' }, '기록한 날')),
+        holidays.status === 'ok' ? null : h('p', { class: 'hint' }, holidayStatusText())),
+      calendarDay(ui.calSel, hmap, byDay));
+  }
+
+  /* 고른 날: 공휴일, 그날 고정 일정(공휴일에 쉬는 것 표시), 그날 기록 */
+  function calendarDay(key, hmap, byDay) {
+    const d = new Date(key + 'T00:00:00');
+    const hol = hmap[key];
+    const off = C.holidayOff(state.settings);
+    const blocks = C.dayBlocks(state.blocks, d.getDay());
+    const recs = (byDay[key] || []).slice().sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+    return h('section', { class: 'card', 'aria-labelledby': 'calDayH' },
+      h('h3', { id: 'calDayH' }, (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + C.DAY_NAMES[d.getDay()] + '요일',
+        hol ? h('span', { class: 'pill holiday' }, hol) : null),
+      h('div', { class: 'obs' }, h('span', { class: 'label' }, '고정 일정'),
+        blocks.length
+          ? h('ul', { class: 'plain' }, blocks.map((b) => {
+            const skip = hol && off.includes(b.kind);
+            return h('li', { class: 'gap-row' + (skip ? ' past' : '') },
+              h('span', null, h('span', { class: 'num' }, b.start + '–' + b.end), ' ' + b.name),
+              h('span', null, skip ? '공휴일이라 쉼' : b.kind));
+          }))
+          : h('p', { class: 'sub' }, '고정 일정이 없는 날이에요.')),
+      h('div', { class: 'obs' }, h('span', { class: 'label' }, '기록'),
+        recs.length
+          ? h('ul', { class: 'plain' }, recs.map((r) => h('li', { class: 'gap-row' },
+            h('span', null, h('span', { class: 'num' }, clockText(r.startedAt)), ' ' + r.name + (r.version === 'min' ? ' (최소)' : '')),
+            h('span', { class: 'num' }, r.actualMin + '분'))))
+          : h('p', { class: 'sub' }, '이날 기록이 없어요.')));
+  }
+
+  function bindHolidayForm() {
+    $('holidayForm').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const off = [...document.querySelectorAll('input[name="sHolidayOff"]:checked')].map((el) => el.value);
+      state.settings = Object.assign({}, state.settings, { holidayOff: off });
+      if (commit()) showStatus('info', '공휴일 설정을 저장했어요.', off.length ? '공휴일에는 ' + off.join('·') + ' 일정을 빼고 계산해요.' : '공휴일에도 모든 고정 일정을 그대로 계산해요.');
+      renderAll();
+    });
   }
 
   /* 앱 안의 지금: 하루 끝이 자정을 넘기면 그 전까지는 전날로 본다 */
@@ -209,6 +317,7 @@
     });
     try { if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name); } catch (e) { /* file:// 등 */ }
     if (name === 'today') renderToday();
+    if (name === 'calendar') renderCalendar();
     if (focusId) {
       const el = $(focusId);
       if (el) { el.focus(); el.scrollIntoView({ block: 'center' }); }
@@ -244,6 +353,7 @@
     renderToday();
     renderRoutines();
     renderWeek();
+    renderCalendar();
     renderReview();
     syncAnchorBlocks();
     fillSettingsForm();
@@ -1164,24 +1274,11 @@
       h('div', { class: 'wticks' }, ticks.map((t) => h('span', { style: 'left:' + pct(t) + '%' }, (Math.floor(t / 60) % 24) + '시'))));
     const kinds = KIND_ORDER.filter((k) => state.blocks.some((b) => (KIND_ORDER.includes(b.kind) ? b.kind : '기타') === k));
 
-    // 다가오는 공휴일 (앞으로 30일)
-    const L = nowL();
-    const soon = C.upcomingHolidays(holidays.list, L.day, 30);
-    const off = C.holidayOff(state.settings);
-    const holidayLine = holidays.status === 'ok' || holidays.status === 'empty'
-      ? h('p', { class: 'holiday-line' }, h('span', { class: 'pill holiday' }, '공휴일'), ' ',
-        soon.length
-          ? soon.map((x) => { const d = new Date(x.date + 'T00:00:00'); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + C.DAY_NAMES[d.getDay()] + ') ' + x.name; }).join(' · ') +
-            (off.length ? ' — 이날은 ' + off.join('·') + ' 일정을 빼고 계산해요.' : '')
-          : '앞으로 30일 안에 공휴일이 없어요.')
-      : null;
-
     return h('section', { class: 'card', 'aria-labelledby': 'weekOverviewH' },
       h('h3', { id: 'weekOverviewH' }, '요일별로 보기'),
       h('p', { class: 'sub' }, '막대에 마우스를 올리면 일정 이름이 보이고, 누르면 고칠 수 있어요.'),
       h('div', { class: 'week-chart' }, rows, scale),
-      h('div', { class: 'legend', 'aria-label': '색 구분' }, kinds.map((k) => h('span', { class: 'lg-k ' + kindClass(k) }, k))),
-      holidayLine);
+      h('div', { class: 'legend', 'aria-label': '색 구분' }, kinds.map((k) => h('span', { class: 'lg-k ' + kindClass(k) }, k))));
   }
 
   function deleteBlock(id) {
@@ -1286,7 +1383,7 @@
       if (focusFirst(errs)) return;
       state.settings = {
         dayStart: $('sDayStart').value, dayEnd: $('sDayEnd').value, bufferMin: Number(buf),
-        holidayOff: [...document.querySelectorAll('input[name="sHolidayOff"]:checked')].map((el) => el.value)
+        holidayOff: C.holidayOff(state.settings)
       };
       const over = C.rolloverMin(state.settings) > 0;
       if (commit()) showStatus('info', '하루 설정을 저장했어요.', state.settings.dayStart + '–' + state.settings.dayEnd + (over ? '(다음 날)' : '') +
@@ -1658,6 +1755,7 @@
     bindRoutineForm();
     bindBlockForm();
     bindEditDialog();
+    bindHolidayForm();
     bindSettingsForm();
     bindData();
 

@@ -358,3 +358,32 @@ a.btn.ghost { color: var(--accent); }
 .pill.holiday { color: var(--high); background: var(--high-bg); margin-left: 8px; vertical-align: 2px; }
 .holiday-line { font-size: 0.86rem; color: var(--muted); }
 .holiday-line .pill { margin-left: 0; }
+
+/* 캘린더 */
+.cal-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.cal-head h2 { font-size: 1.1rem; }
+table.cal { width: 100%; border-collapse: separate; border-spacing: 3px; table-layout: fixed; }
+.cal th { font-size: 0.78rem; color: var(--muted); font-weight: 600; padding: 2px 0; }
+.cal td { padding: 0; vertical-align: top; }
+.cal-day {
+  width: 100%; min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 4px 5px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+  font: inherit; color: var(--ink); cursor: pointer; text-align: left; overflow: hidden;
+}
+.cal-day:hover { border-color: var(--muted); }
+.cal-day.out { opacity: 0.45; }
+.cal-day.today .cal-num { background: var(--ink); color: var(--bg); border-radius: 999px; padding: 0 6px; }
+.cal-day.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cal-num { font-size: 0.85rem; font-weight: 700; line-height: 1.5; }
+.cal-day.red .cal-num, .cal th.red { color: var(--high); }
+.cal-day.today.red .cal-num { color: var(--bg); background: var(--high); }
+.cal-hol { font-size: 0.68rem; color: var(--high); font-weight: 600; line-height: 1.25; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-dots { font-size: 0.6rem; color: var(--accent); letter-spacing: 1px; margin-top: auto; }
+.legend .lg-hol::before { background: var(--high); }
+.legend .lg-dot::before { background: var(--accent); border-radius: 50%; width: 8px; height: 8px; }
+@media (max-width: 440px) {
+  .cal-day { min-height: 52px; padding: 3px; }
+  .cal-hol { font-size: 0.6rem; }
+}
+.tabs [role="tab"] { white-space: nowrap; }
+@media (max-width: 400px) { .tabs [role="tab"] { font-size: 0.84rem; padding: 0 2px; } }
