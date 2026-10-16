@@ -57,7 +57,13 @@
   function uid(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function q(name) { return '‘' + name + '’'; }
   function daysText(days) { return DAY_ORDER.filter((d) => days.includes(d)).map((d) => C.DAY_NAMES[d]).join('·'); }
-  function perWeekText(n) { return n === 7 ? '매일' : '주 ' + n + '회'; }
+  function perWeekText(n) { return n == null ? '상황이 올 때마다' : n === 7 ? '매일' : '주 ' + n + '회'; }
+  /* 루틴 호칭: 시각 루틴 · 상황 루틴 · 아무 때나 루틴 */
+  const KIND_NAMES = { time: '시각 루틴', situation: '상황 루틴', anytime: '아무 때나 루틴' };
+  function kindName(r) { return KIND_NAMES[C.routineKind(r)]; }
+  /* 얼마나 자주: 상황 루틴은 늘 "상황이 올 때마다" */
+  function goalText(r) { return C.isSituation(r) ? '상황이 올 때마다' : perWeekText(r.perWeek); }
+  function sitWeekText(occ, hit) { return occ ? '이번 주 상황 ' + occ + '번 중 ' + hit + '번' : '이번 주는 아직 상황이 없어요'; }
   function dateText(iso) {
     const d = new Date(iso);
     return (d.getMonth() + 1) + '/' + d.getDate() + ' (' + C.DAY_NAMES[d.getDay()] + ')';
@@ -77,20 +83,27 @@
   function findBlock(id) { return state.blocks.find((b) => b.id === id) || null; }
   function hasAnyData() { return state.blocks.length || state.routines.length || state.records.length || state.active; }
 
+  /* 시작 신호를 "~하면" 문장으로 */
   function anchorPhrase(r) {
     const a = r.anchor;
     if (!a) return '빈 시간 아무 때나';
     if (a.type === 'time') return a.time + '이 되면';
-    const b = findBlock(a.blockId);
-    return b ? q(b.name) + ' 끝나면' : '빈 시간 아무 때나';
+    if (a.type === 'block') { const b = findBlock(a.blockId); return b ? q(b.name) + ' 끝나면' : '빈 시간 아무 때나'; }
+    if (a.type === 'routine') { const x = findRoutine(a.routineId); return x ? q(x.name) + ' 끝내면' : '빈 시간 아무 때나'; }
+    if (a.type === 'situation') return q(a.label) + ' 상황이 되면';
+    if (a.type === 'dayoff') return '쉬는 날이면';
+    return '빈 시간 아무 때나';
   }
 
-  /* 시작 지연 문장의 기준점: "‘자료구조’ 끝" / "22:00" */
+  /* 시작 지연 문장의 기준점: "‘자료구조’ 끝" / "22:00" / "‘집 도착’" */
   function anchorLabel(r) {
     const a = r.anchor;
-    if (a && a.type === 'time') return a.time;
-    const b = a && findBlock(a.blockId);
-    return b ? q(b.name) + ' 끝' : '앵커';
+    if (!a) return '시작 신호';
+    if (a.type === 'time') return a.time;
+    if (a.type === 'block') { const b = findBlock(a.blockId); return b ? q(b.name) + ' 끝' : '시작 신호'; }
+    if (a.type === 'routine') { const x = findRoutine(a.routineId); return x ? q(x.name) + ' 끝' : '시작 신호'; }
+    if (a.type === 'situation') return q(a.label);
+    return '시작 신호';
   }
 
   // ---------- 상태 안내 ----------
@@ -112,8 +125,18 @@
     const off = C.holidayOff(state.settings);
     return { holiday: name, off, blocks: C.blocksForDay(state.blocks, !!name, off) };
   }
-  /* 앵커 일정이 공휴일이라 쉬는 날이면 오늘은 앵커가 없는 날로 본다 */
+  /* 상황 루틴 계산에 쓰는 재료 */
+  function sitEnv(now) {
+    return {
+      blocks: state.blocks, records: state.records, events: state.events || [], holidays: holidays.list,
+      off: C.holidayOff(state.settings), shift: shift(), now: now || new Date()
+    };
+  }
+  /* 오늘의 시작 신호: 언제(plannedMin), 오늘 신호가 있는지(today).
+   * 앵커 일정이 공휴일이라 쉬는 날이면 오늘은 앵커가 없는 날로 본다 */
   function anchorFor(r, L, ctx) {
+    const t = r.anchor && r.anchor.type;
+    if (t === 'routine' || t === 'situation' || t === 'dayoff') return C.situationToday(r, sitEnv(), L.day);
     const a = C.anchorToday(r, state.blocks, L.weekday, L.shift);
     if (ctx.holiday && a.type === 'block' && a.today && ctx.off.includes(a.block.kind)) {
       return Object.assign({}, a, { today: false, holiday: true, plannedMin: null });
@@ -384,7 +407,7 @@
     }
     $('activeKind').textContent = a.kind === 'routine'
       ? (a.version === 'min' ? '하는 중 · 루틴 최소 버전' : '하는 중 · 루틴')
-      : '하는 중 · 한 번만 하는 일';
+      : '하는 중 · 다른 활동';
     $('activeTitle').textContent = a.name;
     const bits = [a.category, '예상 ' + a.estimateMin + '분', clockText(a.startedAt) + ' 시작'];
     const delay = C.delayMinutes(a.plannedStartAt, a.startedAt);
@@ -489,7 +512,10 @@
 
   function recordSummary(rec, routine) {
     const bits = [];
-    if (routine) {
+    if (routine && C.isSituation(routine)) {
+      const wk = C.situationWeek(routine, sitEnv());
+      bits.push(sitWeekText(wk.occ, wk.hit));
+    } else if (routine) {
       const done = C.weekDone(state.records, routine.id, new Date(), shift());
       bits.push(done >= routine.perWeek ? '이번 주 ' + perWeekText(routine.perWeek) + ' 채웠어요 (' + done + '일)' : '이번 주 ' + done + '/' + routine.perWeek);
     }
@@ -548,16 +574,32 @@
     const predBase = C.predict(r.baseMin, cal);
     const predMin = C.predict(r.minMin, cal);
     const pick = C.pickGap(gaps, anchor.today ? anchor.plannedMin : null, L.nowMin, state.settings.bufferMin);
-    // 앵커가 이미 지났으면 몇 분 지났는지 (시작 지연이 지금 흐르는 중)
-    const since = anchor.today && anchor.plannedMin <= L.nowMin && L.nowMin - anchor.plannedMin <= C.MAX_DELAY
+    // 시작 신호가 이미 지났으면 몇 분 지났는지 (시작 지연이 지금 흐르는 중)
+    const since = anchor.today && anchor.plannedMin != null && anchor.plannedMin <= L.nowMin && L.nowMin - anchor.plannedMin <= C.MAX_DELAY
       ? L.nowMin - anchor.plannedMin : null;
-    return {
-      r, done, doneToday, anchor, cal, predBase, predMin, pick, since,
-      fit: pick ? C.fit(predBase, predMin, pick.avail) : 'nogap',
+    const base = {
+      r, doneToday, anchor, cal, predBase, predMin, pick, since,
+      fit: pick ? C.fit(predBase, predMin, pick.avail) : 'nogap'
+    };
+    if (C.isSituation(r)) {
+      // 상황 루틴: 이번 주 목표 = 상황이 생긴 날 수, 오늘 할 일 = 오늘 상황이 생겼고 아직 안 했을 때
+      const env = sitEnv(now);
+      const wk = C.situationWeek(r, env);
+      return Object.assign(base, {
+        situation: true, done: wk.hit, target: wk.occ,
+        missed: C.situationMissedYesterday(r, env), tight: null,
+        todo: !!anchor.today && !doneToday
+      });
+    }
+    return Object.assign(base, {
+      situation: false, done, target: r.perWeek,
       missed: C.missedYesterday(state.records, r, now, L.shift),
       tight: C.weekTight(r, done, doneToday, now, L.shift),
       todo: !doneToday && done < r.perWeek
-    };
+    });
+  }
+  function weekText(info) {
+    return info.situation ? sitWeekText(info.target, info.done) : '이번 주 ' + info.done + '/' + info.target;
   }
 
   /* 오늘 화면: 위에서부터 시간 막대 → 지금 → 다른 활동 기록하기 → 남은 루틴 → 고정 일정 */
@@ -598,10 +640,51 @@
       nodes.push(now.node);
     }
     nodes.push(h('button', { type: 'button', class: 'other-btn', id: 'btnOther', onclick: openOtherDialog }, '+ 다른 활동 기록하기'));
+    const sit = situationButtons(L);
+    if (sit) nodes.push(sit);
     nodes.push(todayRoutines(infos, shownId));
     if (todays.length) nodes.push(fixedChips(todays, L.nowMin));
     box.replaceChildren(...nodes);
     updateTaskHint();
+  }
+
+  /* 내가 알려 주는 상황: 상황 루틴에 쓴 상황마다 버튼. 누르면 그 시각이 상황이 생긴 시각이 된다 */
+  function situationLabels() {
+    return [...new Set(state.routines.filter((r) => r.anchor && r.anchor.type === 'situation').map((r) => r.anchor.label))];
+  }
+  function todayEvents(label, L) {
+    const key = C.dayKey(L.day);
+    return (state.events || []).filter((ev) => ev.label === label && C.logicalKey(ev.at, L.shift) === key);
+  }
+  function situationButtons(L) {
+    const labels = situationLabels();
+    if (!labels.length) return null;
+    return h('section', { class: 'section', 'aria-labelledby': 'sitH' },
+      h('h3', { id: 'sitH', class: 'muted-h' }, '지금 이런 상황이에요'),
+      h('div', { class: 'sit-btns' }, labels.map((label) => {
+        const evs = todayEvents(label, L);
+        const on = evs.length > 0;
+        return h('button', {
+          type: 'button', class: 'sit-btn', 'aria-pressed': String(on),
+          'aria-label': q(label) + (on ? ', 오늘 ' + clockText(evs[evs.length - 1].at) + '에 표시함. 누르면 취소' : ' 상황 표시'),
+          onclick: () => toggleSituation(label)
+        }, label, on ? h('span', { class: 'sit-time num' }, ' ' + clockText(evs[evs.length - 1].at)) : null);
+      })));
+  }
+  function toggleSituation(label) {
+    const L = nowL();
+    const evs = todayEvents(label, L);
+    if (evs.length) {
+      state.events = state.events.filter((ev) => !evs.includes(ev));
+      if (commit()) showStatus('info', q(label) + ' 표시를 취소했어요.');
+    } else {
+      state.events = (state.events || []).concat({ id: uid('e'), label, at: new Date().toISOString() });
+      const linked = state.routines.filter((r) => r.anchor && r.anchor.type === 'situation' && r.anchor.label === label).map((r) => r.name);
+      if (commit()) showStatus('info', q(label) + ' 상황이에요.', '연결된 루틴: ' + linked.join(', ') + '. 지금부터 시작까지 걸린 시간을 재요.');
+    }
+    renderToday();
+    const again = [...document.querySelectorAll('.sit-btn')].find((b) => b.textContent.startsWith(label));
+    if (again) again.focus();
   }
 
   /* 다른 활동(반복하지 않는 일) 기록하기: 입력칸을 화면 위 창으로 */
@@ -662,7 +745,9 @@
 
   function sinceText(info) {
     const a = info.anchor;
-    return (a.type === 'block' ? q(a.block.name) + ' 끝난 지 ' : a.time + '부터 ') + info.since + '분';
+    if (a.type === 'block') return q(a.block.name) + ' 끝난 지 ' + info.since + '분';
+    if (a.type === 'time') return a.time + '부터 ' + info.since + '분';
+    return anchorLabel(info.r) + (a.type === 'situation' ? '부터 ' : '난 지 ') + info.since + '분';
   }
 
   /* 오늘의 시간: 고정 일정은 회색, 빈 시간은 민트, 루틴 시작 신호는 청록 점, 지금은 세로선 */
@@ -738,7 +823,7 @@
     else sec.append(h('p', { class: 'sub' }, '지금 루틴 말고는 오늘 남은 루틴이 없어요.'));
 
     if (rest.length) {
-      sec.append(h('p', { class: 'sub' }, '오늘은 쉬어도 돼요: ' + rest.map((i) => i.r.name + ' (' + (i.doneToday ? '오늘 했어요' : '이번 주 ' + i.done + '/' + i.r.perWeek) + ')').join(', ')));
+      sec.append(h('p', { class: 'sub' }, '오늘은 쉬어도 돼요: ' + rest.map((i) => i.r.name + ' (' + (i.doneToday ? '오늘 했어요' : i.situation ? '오늘은 상황 없음' : '이번 주 ' + i.done + '/' + i.r.perWeek) + ')').join(', ')));
     }
     return sec;
   }
@@ -747,6 +832,9 @@
     if (anchor.type === 'block' && !anchor.today) return '오늘은 ' + (anchor.holiday ? '공휴일이라 ' : '') + q(anchor.block.name) + ' 없는 날';
     if (anchor.type === 'block') return q(anchor.block.name) + ' 끝나면';
     if (anchor.type === 'time') return anchor.time + '부터';
+    if (anchor.type === 'routine') return anchorPhrase(r) + (anchor.plannedMin != null ? ' (' + C.fmtHM(anchor.plannedMin) + ' 끝냄)' : '');
+    if (anchor.type === 'situation') return q(anchor.label) + (anchor.plannedMin != null ? ' ' + C.fmtHM(anchor.plannedMin) : '');
+    if (anchor.type === 'dayoff') return '쉬는 날';
     return '아무 때나';
   }
 
@@ -779,7 +867,7 @@
         h('span', { class: 'dot routine-soft', 'aria-hidden': 'true' }),
         h('div', { class: 'rrow-main' },
           h('h4', { class: 'rrow-name' }, r.name),
-          h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 약 ' + info.predBase + '분 · 이번 주 ' + info.done + '/' + r.perWeek),
+          h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 약 ' + info.predBase + '분 · ' + weekText(info)),
           notes.length ? h('span', { class: 'rrow-note' }, notes.join(' · ')) : null),
         h('span', { class: 'fit-word ' + info.fit }, FIT_SHORT[info.fit]),
         h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r, 'base'), 'aria-label': q(r.name) + ' 시작' }, '시작'),
@@ -917,7 +1005,7 @@
     $('todayH').focus();
   }
 
-  // ---------- 한 번만 하는 일 ----------
+  // ---------- 다른 활동 ----------
   function updateTaskHint() {
     const cat = $('tCategory').value.trim() || '기타';
     const est = Number($('tEstimate').value);
@@ -998,6 +1086,7 @@
   // ========== 루틴 ==========
   /* 지난 4주를 주별 일수 막대로. 매일 루틴도 "0주 채움"이 아니라 몇 일 했는지가 보이게 */
   function weeksDots(r) {
+    if (C.isSituation(r)) return situationBars(r);
     const weeks = C.lastWeeks(state.records, r, new Date(), 4, shift());
     const counted = weeks.filter((w) => w.state !== 'none');
     if (!counted.length) return h('span', { class: 'sub' }, '루틴을 만든 지 아직 한 주가 안 됐어요.');
@@ -1011,6 +1100,21 @@
       h('span', { class: 'sub' }, label));
   }
 
+  /* 상황 루틴의 지난 4주: 상황이 생긴 날 중 실천한 날 */
+  function situationBars(r) {
+    const weeks = C.situationWeeks(r, sitEnv(), 4);
+    const counted = weeks.filter((w) => w.state !== 'none');
+    if (!counted.length) return h('span', { class: 'sub' }, '루틴을 만든 지 아직 한 주가 안 됐어요.');
+    const occ = counted.reduce((n, w) => n + w.occ, 0), hit = counted.reduce((n, w) => n + w.hit, 0);
+    const label = occ ? '지난 ' + counted.length + '주 동안 상황 ' + occ + '번 중 ' + hit + '번 실천 (' + Math.round(hit / occ * 100) + '%)'
+      : '지난 ' + counted.length + '주 동안 상황이 없었어요';
+    return h('span', { class: 'weekbars-wrap' },
+      h('span', { class: 'weekbars', 'aria-hidden': 'true' }, weeks.map((w) => h('span', { class: 'wb ' + (w.state === 'quiet' ? 'none' : w.state) },
+        h('span', { class: 'wb-track' }, h('span', { class: 'wb-fill', style: 'height:' + (w.occ ? Math.min(100, w.hit / w.occ * 100) : 0) + '%' })),
+        h('span', { class: 'wb-num num' }, w.state === 'none' || w.state === 'quiet' ? '–' : w.hit + '/' + w.occ)))),
+      h('span', { class: 'sub' }, label));
+  }
+
   function renderRoutines() {
     const box = $('routinesDyn');
     const nodes = [h('h2', { class: 'sr-only' }, '내 루틴')];
@@ -1020,11 +1124,14 @@
       const now = new Date();
       nodes.push(h('ul', { class: 'items plain-list', role: 'list' }, state.routines.map((r) => {
         const li = h('li', { class: 'item', id: 'rc-' + r.id },
-          h('div', { class: 'item-head' }, h('h3', { class: 'item-name' }, r.name), h('span', { class: 'tag' }, r.category)),
+          h('div', { class: 'item-head' }, h('h3', { class: 'item-name' }, r.name),
+            h('span', { class: 'row' }, h('span', { class: 'kind-tag ' + C.routineKind(r) }, kindName(r)), h('span', { class: 'tag' }, r.category))),
           ruleLine(r, null),
           h('div', { class: 'facts' },
-            h('p', null, perWeekText(r.perWeek) + ' · 기본 ' + r.baseMin + '분 / 최소 ' + r.minMin + '분 · ' + measureText(r.measure)),
-            h('p', null, '이번 주 ' + C.weekDone(state.records, r.id, now, shift()) + '/' + r.perWeek),
+            h('p', null, goalText(r) + ' · 기본 ' + r.baseMin + '분 / 최소 ' + r.minMin + '분 · ' + measureText(r.measure)),
+            h('p', null, C.isSituation(r)
+              ? (() => { const wk = C.situationWeek(r, sitEnv(now)); return sitWeekText(wk.occ, wk.hit); })()
+              : '이번 주 ' + C.weekDone(state.records, r.id, now, shift()) + '/' + r.perWeek),
             weeksDots(r),
             r.anchor && r.anchor.type === 'block' && findBlock(r.anchor.blockId)
               ? h('p', null, '앵커 요일: ' + daysText(findBlock(r.anchor.blockId).days)) : null),
@@ -1069,10 +1176,13 @@
       $('btnFinish').focus();
       return;
     }
+    const chained = state.routines.filter((x) => x.anchor && x.anchor.type === 'routine' && x.anchor.routineId === id);
+    chained.forEach((x) => { x.anchor = null; x.perWeek = x.perWeek || 3; });
     state.routines = state.routines.filter((x) => x.id !== id);
     if (ui.editRoutine === id) resetRoutineForm();
     if (ui.panel && ui.panel.routineId === id) ui.panel = null;
-    if (commit()) showStatus('info', q(r.name) + ' 루틴을 지웠어요.', '기록은 돌아보기에 남아 있어요.');
+    if (commit()) showStatus('info', q(r.name) + ' 루틴을 지웠어요.', '기록은 돌아보기에 남아 있어요.' +
+      (chained.length ? ' ' + chained.map((x) => q(x.name)).join(', ') + '은(는) 이제 아무 때나 루틴(주 ' + chained[0].perWeek + '회)이에요.' : ''));
     renderAll();
     $('routineFormH').focus();
   }
@@ -1080,11 +1190,18 @@
   function selectedRadio(name) { const el = document.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : null; }
   function setRadio(name, value) { document.querySelectorAll('input[name="' + name + '"]').forEach((el) => { el.checked = el.value === value; }); }
 
+  const SITUATION_ANCHORS = ['block', 'routine', 'dayoff', 'situation'];
   function toggleRoutineFields() {
     $('rPerWeekHint').hidden = $('rPerWeek').value !== '7';
     const a = selectedRadio('rAnchor');
     $('rAnchorBlockField').hidden = a !== 'block';
     $('rAnchorTimeField').hidden = a !== 'time';
+    $('rAnchorRoutineField').hidden = a !== 'routine';
+    $('rAnchorSituationField').hidden = a !== 'situation';
+    // 상황 루틴은 "주 N회" 대신 "상황이 올 때마다"
+    const each = SITUATION_ANCHORS.includes(a);
+    $('rPerWeekField').hidden = each;
+    $('rEachField').hidden = !each;
     const m = selectedRadio('rMeasure');
     $('rFixedField').hidden = m !== 'fixed';
     $('rCountField').hidden = m !== 'count';
@@ -1106,6 +1223,21 @@
     sel.replaceChildren(...sorted.map((b) => h('option', { value: b.id }, b.name + ' 끝나면 (' + daysText(b.days) + ' ' + b.end + ')')));
     if (keep && findBlock(keep)) sel.value = keep;
   }
+  /* 다른 루틴을 끝내면: 고치는 루틴 자신은 뺀다 */
+  function syncAnchorRoutines() {
+    const sel = $('rAnchorRoutine');
+    const keep = sel.value;
+    const list = state.routines.filter((r) => r.id !== ui.editRoutine);
+    if (!list.length) {
+      sel.replaceChildren(h('option', { value: '' }, '먼저 다른 루틴을 하나 만들어 주세요'));
+      sel.disabled = true;
+    } else {
+      sel.disabled = false;
+      sel.replaceChildren(...list.map((r) => h('option', { value: r.id }, r.name + ' 끝내면')));
+      if (keep && list.some((r) => r.id === keep)) sel.value = keep;
+    }
+    $('situationList').replaceChildren(...situationLabels().map((l) => h('option', { value: l })));
+  }
 
   function resetRoutineForm() {
     ui.editRoutine = null;
@@ -1118,6 +1250,7 @@
     $('rMin').value = '';
     setRadio('rAnchor', state.blocks.length ? 'block' : 'none');
     $('rAnchorTime').value = '';
+    $('rAnchorSituation').value = '';
     setRadio('rMeasure', 'count');
     $('rCountUnit').value = '장';
     $('rFixedAmount').value = '';
@@ -1125,6 +1258,7 @@
     $('rSubmit').textContent = '루틴 만들기';
     $('rCancel').hidden = true;
     syncAnchorBlocks();
+    syncAnchorRoutines();
     toggleRoutineFields();
   }
 
@@ -1133,14 +1267,18 @@
     if (!r) return;
     resetRoutineForm();
     ui.editRoutine = id;
+    syncAnchorRoutines();
     $('rName').value = r.name;
     $('rCategory').value = r.category;
-    $('rPerWeek').value = String(r.perWeek);
+    $('rPerWeek').value = String(r.perWeek || 3);
     $('rBase').value = String(r.baseMin);
     $('rMin').value = String(r.minMin);
     const a = r.anchor;
     if (a && a.type === 'block' && findBlock(a.blockId)) { setRadio('rAnchor', 'block'); $('rAnchorBlock').value = a.blockId; }
     else if (a && a.type === 'time') { setRadio('rAnchor', 'time'); $('rAnchorTime').value = a.time; }
+    else if (a && a.type === 'routine' && findRoutine(a.routineId)) { setRadio('rAnchor', 'routine'); $('rAnchorRoutine').value = a.routineId; }
+    else if (a && a.type === 'situation') { setRadio('rAnchor', 'situation'); $('rAnchorSituation').value = a.label; }
+    else if (a && a.type === 'dayoff') setRadio('rAnchor', 'dayoff');
     else setRadio('rAnchor', 'none');
     setRadio('rMeasure', r.measure.type);
     if (r.measure.type === 'fixed') { $('rFixedAmount').value = String(r.measure.amount); $('rFixedUnit').value = r.measure.unit; }
@@ -1182,6 +1320,21 @@
     const target = d.returnTo && d.returnTo();
     if (target) target.focus();
   }
+  /* 가이드: 활동 다섯 가지가 어떻게 나뉘는지 */
+  function openGuide() {
+    const dlg = $('guideDialog');
+    ui.guideReturn = document.activeElement;
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    $('guideClose').focus();
+  }
+  function bindGuide() {
+    document.querySelectorAll('[data-guide]').forEach((el) => el.addEventListener('click', openGuide));
+    const close = () => { const dlg = $('guideDialog'); if (dlg.open) { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); } };
+    $('guideClose').addEventListener('click', close);
+    $('guideDialog').addEventListener('click', (ev) => { if (ev.target === $('guideDialog')) close(); });
+    $('guideDialog').addEventListener('close', () => { if (ui.guideReturn && document.contains(ui.guideReturn)) ui.guideReturn.focus(); });
+  }
+
   function bindEditDialog() {
     $('editDialogClose').addEventListener('click', closeEditDialog);
     $('editDialog').addEventListener('close', closeEditDialog); // Esc
@@ -1192,7 +1345,7 @@
     document.querySelectorAll('input[name="rAnchor"], input[name="rMeasure"]').forEach((el) => el.addEventListener('change', toggleRoutineFields));
     $('rPerWeek').addEventListener('change', toggleRoutineFields);
     $('rCancel').addEventListener('click', () => { if (dialog) closeEditDialog(); else resetRoutineForm(); });
-    ['rName', 'rCategory', 'rBase', 'rMin', 'rFixedAmount', 'rFixedUnit', 'rCountUnit', 'rAnchorTime', 'rAnchorBlock'].forEach((id) =>
+    ['rName', 'rCategory', 'rBase', 'rMin', 'rFixedAmount', 'rFixedUnit', 'rCountUnit', 'rAnchorTime', 'rAnchorBlock', 'rAnchorRoutine', 'rAnchorSituation'].forEach((id) =>
       $(id).addEventListener('input', () => { if ($(id).getAttribute('aria-invalid')) setErr(id, '', id.startsWith('rAnchor') ? 'rAnchorErr' : null); }));
 
     $('routineForm').addEventListener('submit', (ev) => {
@@ -1217,6 +1370,16 @@
       } else if (anchorType === 'time') {
         if (isNaN(C.toMin($('rAnchorTime').value))) errs.push(setErr('rAnchorTime', '시작할 시각을 골라 주세요', 'rAnchorErr'));
         else anchor = { type: 'time', time: $('rAnchorTime').value };
+      } else if (anchorType === 'routine') {
+        const rid = $('rAnchorRoutine').value;
+        if (!rid || !findRoutine(rid) || rid === ui.editRoutine) errs.push(setErr('rAnchorRoutine', '어느 루틴을 끝내면 시작할지 골라 주세요', 'rAnchorErr'));
+        else anchor = { type: 'routine', routineId: rid };
+      } else if (anchorType === 'situation') {
+        const msg = C.checkSituationLabel($('rAnchorSituation').value);
+        if (msg) errs.push(setErr('rAnchorSituation', msg, 'rAnchorErr'));
+        else anchor = { type: 'situation', label: $('rAnchorSituation').value.trim() };
+      } else if (anchorType === 'dayoff') {
+        anchor = { type: 'dayoff' };
       }
 
       const measureType = selectedRadio('rMeasure');
@@ -1234,7 +1397,7 @@
       const data = {
         name: $('rName').value.trim(),
         category: $('rCategory').value.trim() || '기타',
-        perWeek: Number($('rPerWeek').value),
+        perWeek: SITUATION_ANCHORS.includes(anchorType) ? null : Number($('rPerWeek').value),
         baseMin: Number($('rBase').value),
         minMin: Number($('rMin').value),
         anchor, measure
@@ -1249,7 +1412,7 @@
       }
       if (commit()) {
         showStatus('info', editing ? q(saved.name) + ' 루틴을 고쳤어요.' : q(saved.name) + ' 루틴을 만들었어요.',
-          anchorPhrase(saved) + ' → ' + saved.name + ', ' + perWeekText(saved.perWeek) + '. 오늘 탭에서 시작할 수 있어요.');
+          anchorPhrase(saved) + ' → ' + saved.name + ', ' + goalText(saved) + '. 오늘 탭에서 시작할 수 있어요.');
       }
       resetRoutineForm();
       renderAll();
@@ -1451,7 +1614,7 @@
     const box = $('reviewDyn');
     const nodes = [h('h2', { class: 'sr-only', tabindex: '-1' }, '돌아보기')];
     if (!state.records.length) {
-      nodes.push(emptyBox('아직 기록이 없어요.', '오늘 탭에서 루틴이나 한 번만 하는 일을 시작해 보세요. 끝내면 여기에 쌓여요.',
+      nodes.push(emptyBox('아직 기록이 없어요.', '오늘 탭에서 루틴이나 다른 활동을 시작해 보세요. 끝내면 여기에 쌓여요.',
         h('button', { type: 'button', class: 'btn', onclick: () => switchTab('today', 'todayH') }, '오늘 탭으로')));
       box.replaceChildren(...nodes);
       return;
@@ -1533,7 +1696,7 @@
         const dur = C.observeDuration(state.records, r);
         const label = { fixed: '걸린 시간 (' + (r.measure.amount || '') + (r.measure.unit || '') + ', 기본 버전)', count: r.measure.unit + '당 걸린 시간', none: '예상과 실제' }[r.measure.type];
         const li = h('li', { class: 'item' },
-          h('div', { class: 'item-head' }, h('h4', { class: 'item-name' }, r.name), h('span', { class: 'sub' }, perWeekText(r.perWeek))),
+          h('div', { class: 'item-head' }, h('h4', { class: 'item-name' }, r.name), h('span', { class: 'sub' }, goalText(r))),
           h('div', { class: 'obs' }, h('span', { class: 'label' }, label), h('p', null, C.durationSentence(dur, r))));
         if (r.anchor) {
           const delay = C.observeDelay(state.records, r);
@@ -1589,7 +1752,7 @@
     }
     sec.append(h('ul', { class: 'plain', id: 'recordList' }, shown.map((r) => {
       const routine = r.routineId ? findRoutine(r.routineId) : null;
-      const kind = r.kind === 'task' ? '한 번만' : (r.version === 'min' ? '루틴 · 최소' : '루틴');
+      const kind = r.kind === 'task' ? '다른 활동' : (r.version === 'min' ? '루틴 · 최소' : '루틴');
       const amountUnit = routine && routine.measure.unit ? routine.measure.unit : '';
       const label = q(r.name) + ' ' + dateText(r.startedAt);
       const li = h('li', { class: 'rec', id: 'rec-' + r.id },
@@ -1808,6 +1971,7 @@
     bindRoutineForm();
     bindBlockForm();
     bindEditDialog();
+    bindGuide();
     bindHolidayForm();
     bindSettingsForm();
     bindData();

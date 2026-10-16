@@ -284,6 +284,107 @@
     return left > daysLeft ? { left: left, daysLeft: daysLeft } : null;
   }
 
+  // ---------- 루틴 종류와 상황 루틴 ----------
+  /* 시각 루틴(time) · 상황 루틴(situation) · 아무 때나 루틴(anytime)
+   * 상황 루틴의 신호: 고정 일정이 끝나면(block) · 다른 루틴을 끝내면(routine) · 쉬는 날이면(dayoff) · 내가 알려 주는 상황(situation)
+   * 상황 루틴은 "주 N회" 대신 "상황이 올 때마다" 하고, 상황이 생긴 날 중 실천한 날로 센다. */
+  var SITUATION_TYPES = ['block', 'routine', 'dayoff', 'situation'];
+  function routineKind(r) {
+    if (!r.anchor) return 'anytime';
+    return r.anchor.type === 'time' ? 'time' : 'situation';
+  }
+  function isSituation(r) { return !!r.anchor && SITUATION_TYPES.indexOf(r.anchor.type) !== -1; }
+
+  /* env: { blocks, records, events, holidays, off, shift, now } · from·to: 앱 안의 날짜(to는 제외)
+   * 루틴을 만든 날 전과 오늘 뒤는 세지 않는다 → 상황이 생긴 날 { 'YYYY-MM-DD': true } */
+  function occurrenceDays(r, env, from, to) {
+    var a = r.anchor, set = {}, shift = env.shift || 0;
+    var today = startOfDay(shifted(env.now, shift));
+    var made = startOfDay(shifted(r.createdAt, shift));
+    var s = Math.max(from.getTime(), made.getTime()), e = Math.min(to.getTime(), addDays(today, 1).getTime());
+    if (a.type === 'routine' || a.type === 'situation') {
+      var times = a.type === 'routine'
+        ? env.records.filter(function (x) { return x.routineId === a.routineId; }).map(function (x) { return x.startedAt; })
+        : (env.events || []).filter(function (ev) { return ev.label === a.label; }).map(function (ev) { return ev.at; });
+      times.forEach(function (iso) {
+        var t = Date.parse(iso) - shift * 60000;
+        if (t >= s && t < e) set[dayKey(t)] = true;
+      });
+      return set;
+    }
+    for (var d = new Date(s); d.getTime() < e; d = addDays(d, 1)) {
+      var hol = holidayName(env.holidays || [], d) != null;
+      var wd = d.getDay();
+      var dayBl = blocksForDay(env.blocks, hol, env.off || DEFAULT_HOLIDAY_OFF).filter(function (b) { return b.days.indexOf(wd) !== -1; });
+      if (a.type === 'block' && dayBl.some(function (b) { return b.id === a.blockId; })) set[dayKey(d)] = true;
+      if (a.type === 'dayoff' && (hol || dayBl.length === 0)) set[dayKey(d)] = true;
+    }
+    return set;
+  }
+  function doneDays(records, routineId, from, to, shift) {
+    var set = {};
+    records.forEach(function (r) {
+      if (r.routineId !== routineId) return;
+      var t = Date.parse(r.startedAt) - (shift || 0) * 60000;
+      if (t >= from.getTime() && t < to.getTime()) set[dayKey(t)] = true;
+    });
+    return set;
+  }
+  /* 상황이 생긴 날(occ) 중 실천한 날(hit) */
+  function situationProgress(r, env, from, to) {
+    var occ = occurrenceDays(r, env, from, to), done = doneDays(env.records, r.id, from, to, env.shift);
+    var keys = Object.keys(occ);
+    return { occ: keys.length, hit: keys.filter(function (k) { return done[k]; }).length };
+  }
+  function situationWeek(r, env) {
+    var ws = startOfWeek(shifted(env.now, env.shift));
+    return situationProgress(r, env, ws, addDays(ws, 7));
+  }
+  /* 지난 4주(이번 주 제외). state: none(만들기 전) | quiet(상황 없음) | done(전부 실천) | miss */
+  function situationWeeks(r, env, count) {
+    var out = [], thisWeek = startOfWeek(shifted(env.now, env.shift)), made = Date.parse(r.createdAt) - (env.shift || 0) * 60000;
+    for (var i = (count || 4); i >= 1; i--) {
+      var ws = addDays(thisWeek, -7 * i), we = addDays(ws, 7);
+      if (made >= we.getTime()) { out.push({ weekStart: ws, occ: 0, hit: 0, state: 'none' }); continue; }
+      var p = situationProgress(r, env, ws, we);
+      out.push({ weekStart: ws, occ: p.occ, hit: p.hit, state: p.occ === 0 ? 'quiet' : (p.hit >= p.occ ? 'done' : 'miss') });
+    }
+    return out;
+  }
+  /* 어제 상황이 생겼는데 하지 못했는지 (두 번 연속 놓치지 않기) */
+  function situationMissedYesterday(r, env) {
+    var y = addDays(startOfDay(shifted(env.now, env.shift)), -1);
+    var p = situationProgress(r, env, y, addDays(y, 1));
+    return p.occ > 0 && p.hit === 0;
+  }
+  /* 오늘 상황이 생겼는지와 그 시각(앱 안의 하루 기준 분). day: 앱 안의 오늘(자정 Date) */
+  function situationToday(r, env, day) {
+    var a = r.anchor, shift = env.shift || 0, key = dayKey(day);
+    var minOf = function (iso) { return Math.round((Date.parse(iso) - day.getTime()) / 60000); };
+    var onDay = function (iso) { return dayKey(Date.parse(iso) - shift * 60000) === key; };
+    if (a.type === 'routine') {
+      var recs = env.records.filter(function (x) { return x.routineId === a.routineId && onDay(x.startedAt); })
+        .sort(function (p, q) { return Date.parse(q.endedAt) - Date.parse(p.endedAt); });
+      return { type: 'routine', today: recs.length > 0, plannedMin: recs.length ? minOf(recs[0].endedAt) : null };
+    }
+    if (a.type === 'situation') {
+      var evs = (env.events || []).filter(function (ev) { return ev.label === a.label && onDay(ev.at); })
+        .sort(function (p, q) { return Date.parse(q.at) - Date.parse(p.at); });
+      return { type: 'situation', today: evs.length > 0, plannedMin: evs.length ? minOf(evs[0].at) : null, label: a.label };
+    }
+    if (a.type === 'dayoff') {
+      var p = situationProgress(r, Object.assign({}, env, { now: env.now }), day, addDays(day, 1));
+      return { type: 'dayoff', today: p.occ > 0, plannedMin: null };
+    }
+    return null;
+  }
+  function checkSituationLabel(v) {
+    var t = String(v == null ? '' : v).trim();
+    if (!t) return '상황 이름을 적어 주세요 (예: 집 도착)';
+    if (t.length > 20) return '상황 이름은 20자 이내로 적어 주세요';
+    return '';
+  }
+
   // ---------- 규칙 다듬기 제안 ----------
   /* 기록에 근거한 제안만. 횟수를 올리자는 제안은 하지 않는다(목표는 행동, 기록이 좋다고 목표를 키우지 않음).
    * 반환: [{ key, routineId, kind: 'perWeek'|'baseMin'|'steady', from, to }] */
@@ -291,16 +392,17 @@
     var out = [];
     var wk = dayKey(startOfWeek(shifted(now, shift)));
     routines.forEach(function (r) {
-      var weeks = lastWeeks(records, r, now, 4, shift);
+      // 상황 루틴은 "주 N회"가 없어서 횟수 제안과 4주 채움을 보지 않는다 (기본 시간 제안만)
+      var weeks = isSituation(r) || !r.perWeek ? [] : lastWeeks(records, r, now, 4, shift);
       var last2 = weeks.slice(-2);
-      if (r.perWeek > 1 && last2.every(function (w) { return w.state === 'miss'; })) {
+      if (r.perWeek > 1 && last2.length === 2 && last2.every(function (w) { return w.state === 'miss'; })) {
         var avg = (last2[0].count + last2[1].count) / 2;
         var to = Math.max(1, Math.round(avg));
         if (to < r.perWeek && avg <= r.perWeek - 1) {
           out.push({ key: wk + '|' + r.id + '|perWeek', routineId: r.id, kind: 'perWeek', from: r.perWeek, to: to, counts: last2.map(function (w) { return w.count; }) });
         }
       }
-      if (weeks.every(function (w) { return w.state === 'done'; })) {
+      if (weeks.length && weeks.every(function (w) { return w.state === 'done'; })) {
         out.push({ key: wk + '|' + r.id + '|steady', routineId: r.id, kind: 'steady' });
       }
       var base = records.filter(function (x) { return x.routineId === r.id && x.version !== 'min'; }).sort(byStart).slice(-5);
@@ -435,6 +537,9 @@
     minutesOfDay: minutesOfDay, atMinutes: atMinutes, diffMin: diffMin,
     MAX_ROLLOVER: MAX_ROLLOVER, dayEndMin: dayEndMin, rolloverMin: rolloverMin, logical: logical, logicalKey: logicalKey,
     checkSettings: checkSettings, suggestions: suggestions, looksTooLong: looksTooLong,
+    SITUATION_TYPES: SITUATION_TYPES, routineKind: routineKind, isSituation: isSituation, occurrenceDays: occurrenceDays,
+    situationProgress: situationProgress, situationWeek: situationWeek, situationWeeks: situationWeeks,
+    situationMissedYesterday: situationMissedYesterday, situationToday: situationToday, checkSituationLabel: checkSituationLabel,
     DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,
     upcomingHolidays: upcomingHolidays, validHolidays: validHolidays,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,

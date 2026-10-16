@@ -395,3 +395,70 @@ test('공휴일 API 인증키 오류(JSON)를 이유와 함께 알린다', () =>
   const err = { OpenAPI_ServiceResponse: { cmmMsgHeader: { errMsg: 'SERVICE_KEY_IS_NOT_REGISTERED_ERROR', returnAuthMsg: '등록되지 않은 서비스키', returnReasonCode: '30' } } };
   assert.throws(() => normalize(err), /API 오류: 30 SERVICE_KEY_IS_NOT_REGISTERED_ERROR \(등록되지 않은 서비스키\)/);
 });
+
+// ---------- 상황 루틴 ----------
+test('상황 루틴: 루틴 종류 구분', () => {
+  assert.equal(Calc.routineKind({ anchor: null }), 'anytime');
+  assert.equal(Calc.routineKind({ anchor: { type: 'time', time: '22:00' } }), 'time');
+  ['block', 'routine', 'dayoff', 'situation'].forEach((t) => assert.equal(Calc.routineKind({ anchor: { type: t } }), 'situation'));
+  assert.equal(Calc.isSituation({ anchor: { type: 'time' } }), false);
+});
+
+test('상황 루틴: 다른 루틴을 끝낸 날이 상황, 그중 실천한 날을 센다', () => {
+  const now = new Date(2026, 9, 16, 21); // 금
+  const r = { id: 'r2', anchor: { type: 'routine', routineId: 'r1' }, createdAt: iso(2026, 10, 1) };
+  const records = [
+    rec({ routineId: 'r1', startedAt: iso(2026, 10, 12, 22) }), rec({ routineId: 'r1', startedAt: iso(2026, 10, 13, 22) }),
+    rec({ routineId: 'r1', startedAt: iso(2026, 10, 14, 22) }),
+    rec({ routineId: 'r2', startedAt: iso(2026, 10, 12, 22, 40) }), rec({ routineId: 'r2', startedAt: iso(2026, 10, 14, 22, 50) })
+  ];
+  const env = { blocks: [], records, events: [], holidays: [], shift: 0, now };
+  assert.deepEqual(Calc.situationWeek(r, env), { occ: 3, hit: 2 });
+  const today = Calc.situationToday(r, env, new Date(2026, 9, 16));
+  assert.equal(today.today, false);
+  const env2 = Object.assign({}, env, { records: records.concat(rec({ routineId: 'r1', startedAt: iso(2026, 10, 16, 20), endedAt: iso(2026, 10, 16, 20, 30) })) });
+  const t2 = Calc.situationToday(r, env2, new Date(2026, 9, 16));
+  assert.equal(t2.today, true);
+  assert.equal(t2.plannedMin, 20 * 60 + 30, '끝낸 시각이 시작 신호');
+});
+
+test('상황 루틴: 내가 알려 준 상황과 어제 놓침', () => {
+  const now = new Date(2026, 9, 16, 21);
+  const r = { id: 'r3', anchor: { type: 'situation', label: '집 도착' }, createdAt: iso(2026, 10, 1) };
+  const events = [{ id: 'e1', label: '집 도착', at: iso(2026, 10, 15, 18, 40) }, { id: 'e2', label: '집 도착', at: iso(2026, 10, 16, 18, 50) }];
+  const env = { blocks: [], records: [], events, holidays: [], shift: 0, now };
+  assert.equal(Calc.situationMissedYesterday(r, env), true);
+  const t = Calc.situationToday(r, env, new Date(2026, 9, 16));
+  assert.equal(t.plannedMin, 18 * 60 + 50);
+  const env2 = Object.assign({}, env, { records: [rec({ routineId: 'r3', startedAt: iso(2026, 10, 15, 19) })] });
+  assert.equal(Calc.situationMissedYesterday(r, env2), false);
+});
+
+test('상황 루틴: 쉬는 날은 공휴일이거나 고정 일정이 없는 날', () => {
+  const now = new Date(2026, 9, 18, 21); // 일
+  const r = { id: 'r4', anchor: { type: 'dayoff' }, createdAt: iso(2026, 10, 1) };
+  const blocks = [{ id: 'b1', name: '수업', kind: '수업', days: [1, 2, 3, 4, 5], start: '10:00', end: '12:00' },
+    { id: 'b2', name: '알바', kind: '알바', days: [6], start: '14:00', end: '19:00' }];
+  const env = { blocks, records: [], events: [], holidays: [{ date: '2026-10-14', name: '테스트 공휴일' }], off: ['수업', '통학'], shift: 0, now };
+  // 이번 주: 수(공휴일, 수업 쉼) + 일(일정 없음) = 2일. 토요일은 알바가 있어 쉬는 날이 아님
+  assert.deepEqual(Calc.situationWeek(r, env), { occ: 2, hit: 0 });
+});
+
+test('상황 루틴: 저장소 검사 (perWeek 없음, 상황 버튼 기록)', () => {
+  const d = Store.empty();
+  d.routines.push({ id: 'r1', name: '정리', category: '생활', perWeek: null, baseMin: 10, minMin: 5,
+    anchor: { type: 'situation', label: '집 도착' }, measure: { type: 'none' }, createdAt: iso(2026, 10, 1) });
+  d.events.push({ id: 'e1', label: '집 도착', at: iso(2026, 10, 15, 18) });
+  assert.equal(Store.validate(d), true);
+  d.routines[0].anchor = { type: 'time', time: '22:00' };
+  assert.equal(Store.validate(d), false, '시각 루틴은 perWeek가 있어야 함');
+  assert.equal(Calc.checkSituationLabel(''), '상황 이름을 적어 주세요 (예: 집 도착)');
+});
+
+test('규칙 제안: 상황 루틴이 섞여 있어도 오류 없이 기본 시간 제안만', () => {
+  const now = new Date(2026, 9, 19, 9);
+  const r = { id: 'r1', perWeek: null, baseMin: 10, minMin: 5, anchor: { type: 'situation', label: '집 도착' }, createdAt: iso(2026, 9, 1) };
+  const rs = [20, 21, 19, 22, 20].map((m, i) => rec({ startedAt: iso(2026, 10, 10 + i), actualMin: m }));
+  const kinds = Calc.suggestions(rs, [r], now, 0).map((x) => x.kind);
+  assert.deepEqual(kinds, ['baseMin']);
+});

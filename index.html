@@ -21,6 +21,7 @@
     <div class="brand-row">
       <h1 class="brand">루틴메이커</h1>
       <a class="about" href="intro.html">앱 소개</a>
+      <button type="button" class="about guide-btn" data-guide>가이드</button>
     </div>
     <nav class="tabs" role="tablist" aria-label="화면">
       <button type="button" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true">오늘</button>
@@ -162,7 +163,7 @@
               <input id="rCategory" list="categoryList" autocomplete="off" value="공부" aria-describedby="rCategoryErr">
               <p class="err" id="rCategoryErr"></p>
             </div>
-            <div class="field">
+            <div class="field" id="rPerWeekField">
               <label for="rPerWeek">주 몇 번</label>
               <select id="rPerWeek">
                 <option value="1">주 1회</option><option value="2">주 2회</option><option value="3" selected>주 3회</option>
@@ -170,6 +171,10 @@
                 <option value="7">매일</option>
               </select>
               <p class="hint" id="rPerWeekHint" hidden>매일로 정하면 하루만 빠져도 그 주를 못 채운 걸로 세요. 주 6회로 하면 하루 쉴 틈이 생겨요.</p>
+            </div>
+            <div class="field" id="rEachField" hidden>
+              <span class="field-label">얼마나 자주</span>
+              <p class="each-note">상황이 올 때마다 해요</p>
             </div>
           </div>
           <div class="grid2">
@@ -187,18 +192,38 @@
           </div>
 
           <fieldset class="choice" id="rAnchorSet" aria-describedby="rAnchorErr">
-            <legend>언제 시작하나요? <span class="legend-sub">(앵커)</span></legend>
-            <label class="radio"><input type="radio" name="rAnchor" value="block" checked> 고정 일정이 끝나면</label>
-            <div class="field indent" id="rAnchorBlockField">
-              <label for="rAnchorBlock" class="sr-only">어느 고정 일정이 끝나면</label>
-              <select id="rAnchorBlock" aria-describedby="rAnchorErr"></select>
-            </div>
+            <legend>언제 시작하나요? <button type="button" class="link-btn guide-link" data-guide>루틴 종류 알아보기</button></legend>
+
+            <p class="kind-h">시각 루틴</p>
             <label class="radio"><input type="radio" name="rAnchor" value="time"> 정해진 시각에</label>
             <div class="field indent" id="rAnchorTimeField" hidden>
               <label for="rAnchorTime" class="sr-only">시작 시각</label>
               <input type="time" id="rAnchorTime" aria-describedby="rAnchorErr">
             </div>
+
+            <p class="kind-h">상황 루틴 <span class="legend-sub">상황이 올 때마다 해요</span></p>
+            <label class="radio"><input type="radio" name="rAnchor" value="block" checked> 고정 일정이 끝나면</label>
+            <div class="field indent" id="rAnchorBlockField">
+              <label for="rAnchorBlock" class="sr-only">어느 고정 일정이 끝나면</label>
+              <select id="rAnchorBlock" aria-describedby="rAnchorErr"></select>
+            </div>
+            <label class="radio"><input type="radio" name="rAnchor" value="routine"> 다른 루틴을 끝내면</label>
+            <div class="field indent" id="rAnchorRoutineField" hidden>
+              <label for="rAnchorRoutine" class="sr-only">어느 루틴을 끝내면</label>
+              <select id="rAnchorRoutine" aria-describedby="rAnchorErr"></select>
+            </div>
+            <label class="radio"><input type="radio" name="rAnchor" value="dayoff"> 쉬는 날이면 <span class="radio-sub">공휴일이나 고정 일정이 없는 날</span></label>
+            <label class="radio"><input type="radio" name="rAnchor" value="situation"> 내가 알려 주는 상황이 되면</label>
+            <div class="field indent" id="rAnchorSituationField" hidden>
+              <label for="rAnchorSituation">상황 이름</label>
+              <input id="rAnchorSituation" list="situationList" autocomplete="off" placeholder="예: 집 도착" aria-describedby="rAnchorSituationHint rAnchorErr">
+              <datalist id="situationList"></datalist>
+              <p class="hint" id="rAnchorSituationHint">오늘 탭에 이 이름의 버튼이 생겨요. 그 상황이 되면 눌러 주세요.</p>
+            </div>
+
+            <p class="kind-h">아무 때나 루틴</p>
             <label class="radio"><input type="radio" name="rAnchor" value="none"> 빈 시간 아무 때나</label>
+
             <p class="hint">"수업 끝나면"처럼 방금 일어난 일에 붙이면 시작하기 쉬워요.</p>
             <p class="err" id="rAnchorErr"></p>
           </fieldset>
@@ -352,6 +377,55 @@
 
   <datalist id="categoryList"></datalist>
 </div>
+
+<!-- 가이드: 활동 다섯 가지 -->
+<dialog id="guideDialog" class="dialog guide" aria-labelledby="guideTitle">
+  <div class="dialog-head">
+    <h2 id="guideTitle">활동은 다섯 가지예요</h2>
+    <button type="button" class="btn ghost small" id="guideClose">닫기</button>
+  </div>
+  <div class="guide-body">
+    <p class="sub">루틴메이커는 하루의 활동을 다섯 가지로 나눠요. 루틴은 시작 신호에 따라 세 가지예요.</p>
+    <ul class="guide-list">
+      <li class="g-fixed">
+        <span class="g-mark" aria-hidden="true"></span>
+        <div><h3>고정 일정</h3>
+          <p>수업·통학·알바처럼 요일과 시각이 정해져 있어 내가 옮길 수 없는 일. 주간 틀에 넣으면 이걸 빼고 남는 시간이 빈 시간이 돼요.</p>
+          <p class="g-eg">예: 월·수 10:30–11:45 자료구조</p></div>
+      </li>
+      <li class="g-time">
+        <span class="g-mark" aria-hidden="true"></span>
+        <div><h3>시각 루틴</h3>
+          <p>정해진 시각이 시작 신호인 루틴. 주 몇 번 할지 정해요.</p>
+          <p class="g-eg">예: 22:00이 되면 → 영어 단어 100개, 매일</p></div>
+      </li>
+      <li class="g-situation">
+        <span class="g-mark" aria-hidden="true"></span>
+        <div><h3>상황 루틴</h3>
+          <p>어떤 상황이 시작 신호인 루틴. 상황이 올 때마다 하고, 상황이 생긴 날 중 실천한 날로 세요.</p>
+          <ul class="g-sub">
+            <li><strong>고정 일정이 끝나면</strong> · 수업 끝나면 → 복습</li>
+            <li><strong>다른 루틴을 끝내면</strong> · 단어 외우고 나면 → 일기 3줄</li>
+            <li><strong>쉬는 날이면</strong> · 공휴일이나 고정 일정이 없는 날 → 방 정리</li>
+            <li><strong>내가 알려 주는 상황이 되면</strong> · 집 도착 → 정리 10분. 앱이 알 수 없는 상황은 오늘 탭의 상황 버튼으로 알려 주세요.</li>
+          </ul></div>
+      </li>
+      <li class="g-anytime">
+        <span class="g-mark" aria-hidden="true"></span>
+        <div><h3>아무 때나 루틴</h3>
+          <p>시작 신호 없이 빈 시간 아무 때나 하는 루틴. 주 몇 번 할지 정해요.</p>
+          <p class="g-eg">예: 스트레칭 주 3회</p></div>
+      </li>
+      <li class="g-other">
+        <span class="g-mark" aria-hidden="true"></span>
+        <div><h3>다른 활동</h3>
+          <p>과제·발표 준비처럼 반복하지 않는 일. 예상 시간과 실제 시간을 재서, 카테고리마다 시간을 얼마나 짧게 잡는지 보여 줘요.</p>
+          <p class="g-eg">오늘 탭의 "다른 활동 기록하기"</p></div>
+      </li>
+    </ul>
+    <p class="sub">모든 루틴은 바쁜 날을 위한 최소 버전을 둘 수 있고, 최소 버전도 지킨 것으로 세요.</p>
+  </div>
+</dialog>
 
 <!-- 고치기 대화상자: 루틴·고정 일정 폼을 잠시 이 안으로 옮겨 와서 화면 위에 띄운다 -->
 <dialog id="editDialog" class="dialog" aria-labelledby="editDialogTitle">

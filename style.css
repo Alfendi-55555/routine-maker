@@ -483,3 +483,32 @@ table.cal { width: 100%; border-collapse: separate; border-spacing: 3px; table-l
 .fchip .sq { width: 8px; height: 8px; border-radius: 2px; background: var(--block); }
 .fchip.past { color: var(--muted); }
 .fchip.past .sq { background: var(--block-past); }
+
+/* 루틴 종류: 호칭 태그, 입력칸 묶음, 상황 버튼, 가이드 */
+.guide-btn { border: 0; background: none; padding: 0; font: inherit; cursor: pointer; }
+.kind-h { font-size: 0.8rem; font-weight: 700; color: var(--teal-ink); margin-top: 6px; }
+.kind-h:first-of-type { margin-top: 0; }
+legend .guide-link { font-size: 0.8rem; margin-left: 6px; }
+.field-label { font-weight: 600; font-size: 0.9rem; }
+.each-note { min-height: 40px; display: flex; align-items: center; padding: 0 10px; border-radius: 8px; background: var(--accent-soft); color: var(--teal-ink); font-size: 0.9rem; font-weight: 600; }
+.kind-tag { font-size: 0.72rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; background: var(--accent-soft); color: var(--teal-ink); white-space: nowrap; }
+.kind-tag.anytime { background: var(--chip); color: var(--muted); }
+.kind-tag.situation { background: var(--cream); color: var(--cream-ink); }
+.item-head .row { gap: 6px; }
+.sit-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.sit-btn { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--teal-mid); background: var(--surface); color: var(--teal-ink); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+.sit-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.sit-time { font-weight: 400; opacity: 0.9; }
+.guide-body { padding: 16px; display: grid; gap: 12px; }
+.guide-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.guide-list > li { display: flex; gap: 12px; align-items: flex-start; }
+.guide-list h3 { font-size: 0.98rem; margin-bottom: 2px; }
+.guide-list p { font-size: 0.9rem; }
+.g-mark { flex: none; width: 14px; height: 14px; margin-top: 4px; }
+.g-fixed .g-mark { border-radius: 3px; background: var(--block); }
+.g-time .g-mark { border-radius: 50%; background: var(--accent); }
+.g-situation .g-mark { border-radius: 50%; background: var(--teal-mid); }
+.g-anytime .g-mark { border-radius: 50%; border: 2px solid var(--teal-mid); }
+.g-other .g-mark { border-radius: 3px; border: 2px dashed var(--teal-mid); }
+.g-eg { color: var(--muted); font-size: 0.82rem !important; }
+.g-sub { margin: 6px 0 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: 0.86rem; }

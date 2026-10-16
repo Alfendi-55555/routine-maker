@@ -25,13 +25,21 @@
       { id: 'b_s5', name: '카페 알바', kind: '알바', days: [5, 6], start: '14:00', end: '19:00' }
     ];
     var routines = [
-      { id: 'r_s1', name: '자료구조 복습', category: '복습', perWeek: 2, baseMin: 45, minMin: 15,
+      { id: 'r_s1', name: '자료구조 복습', category: '복습', perWeek: null, baseMin: 45, minMin: 15,
         anchor: { type: 'block', blockId: 'b_s1' }, measure: { type: 'count', unit: '장' }, createdAt: created },
       { id: 'r_s2', name: '영어 단어 100개', category: '공부', perWeek: 7, baseMin: 30, minMin: 10,
         anchor: { type: 'time', time: '22:00' }, measure: { type: 'fixed', amount: 100, unit: '개' }, createdAt: created },
       { id: 'r_s3', name: '팀플 회의록 정리', category: '팀플', perWeek: 1, baseMin: 40, minMin: 15,
-        anchor: null, measure: { type: 'none' }, createdAt: created }
+        anchor: null, measure: { type: 'none' }, createdAt: created },
+      // 상황 루틴: 다른 루틴을 끝내면 / 쉬는 날이면 / 내가 알려 주는 상황
+      { id: 'r_s4', name: '하루 3줄 일기', category: '기록', perWeek: null, baseMin: 10, minMin: 3,
+        anchor: { type: 'routine', routineId: 'r_s2' }, measure: { type: 'fixed', amount: 3, unit: '줄' }, createdAt: created },
+      { id: 'r_s5', name: '방 정리', category: '생활', perWeek: null, baseMin: 20, minMin: 10,
+        anchor: { type: 'dayoff' }, measure: { type: 'none' }, createdAt: created },
+      { id: 'r_s6', name: '정리 10분', category: '생활', perWeek: null, baseMin: 10, minMin: 5,
+        anchor: { type: 'situation', label: '집 도착' }, measure: { type: 'none' }, createdAt: created }
     ];
+    var events = [], en = 0;
 
     var records = [], n = 0;
     function push(o) { n += 1; o.id = 't_s' + n; records.push(o); }
@@ -47,6 +55,33 @@
         push(Object.assign({ kind: 'routine', routineId: 'r_s2', name: '영어 단어 100개', category: '공부',
           version: minVer ? 'min' : 'base', estimateMin: minVer ? 10 : 30, actualMin: act, amount: minVer ? null : 100,
           plannedStartAt: at(day, '22:00').toISOString(), source: 'timer' }, span(s, act)));
+      }
+      // 하루 3줄 일기: 영어 단어를 끝낸 날, 끝내고 조금 뒤에
+      var wordsToday = records.filter(function (x) { return x.routineId === 'r_s2' && C.dayKey(x.startedAt) === C.dayKey(day); })[0];
+      if (wordsToday && rnd() < 0.75) {
+        var act4 = Math.round(7 + rnd() * 6);
+        push(Object.assign({ kind: 'routine', routineId: 'r_s4', name: '하루 3줄 일기', category: '기록',
+          version: 'base', estimateMin: 10, actualMin: act4, amount: 3, plannedStartAt: wordsToday.endedAt, source: 'timer' },
+          span(new Date(Date.parse(wordsToday.endedAt) + Math.round(3 + rnd() * 12) * 60000), act4)));
+      }
+      // 방 정리: 쉬는 날(이 예시에서는 일요일)
+      if (wd === 0 && rnd() < 0.7) {
+        var est5 = 20, act5 = Math.round(est5 * (1.2 + rnd() * 0.5));
+        push(Object.assign({ kind: 'routine', routineId: 'r_s5', name: '방 정리', category: '생활',
+          version: 'base', estimateMin: est5, actualMin: act5, amount: null, plannedStartAt: null, source: 'timer' },
+          span(at(day, '15:00', Math.round(rnd() * 60)), act5)));
+      }
+      // 집 도착: 월~목 하교 뒤 상황 버튼을 누르고, 대부분 바로 정리
+      if (wd >= 1 && wd <= 4 && rnd() < 0.85) {
+        var arrive = at(day, '18:40', Math.round(rnd() * 25));
+        en += 1;
+        events.push({ id: 'e_s' + en, label: '집 도착', at: arrive.toISOString() });
+        if (rnd() < 0.8) {
+          var act6 = Math.round(8 + rnd() * 7);
+          push(Object.assign({ kind: 'routine', routineId: 'r_s6', name: '정리 10분', category: '생활',
+            version: 'base', estimateMin: 10, actualMin: act6, amount: null, plannedStartAt: arrive.toISOString(), source: 'timer' },
+            span(new Date(arrive.getTime() + Math.round(2 + rnd() * 14) * 60000), act6)));
+        }
       }
       // 자료구조 복습: 월·수 수업 끝나고. 슬라이드 장수가 매번 다르다
       if ((wd === 1 || wd === 3) && rnd() < 0.85) {
@@ -81,7 +116,7 @@
     return {
       version: 1,
       settings: { dayStart: '08:00', dayEnd: '01:00', bufferMin: 10 },
-      blocks: blocks, routines: routines, active: null, records: records, dismissed: []
+      blocks: blocks, routines: routines, active: null, records: records, events: events, dismissed: []
     };
   }
 

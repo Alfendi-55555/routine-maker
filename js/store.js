@@ -17,6 +17,7 @@
       routines: [],
       active: null,
       records: [],
+      events: [],
       dismissed: []
     };
   }
@@ -47,8 +48,13 @@
     if (!a || typeof a !== 'object') return false;
     if (a.type === 'block') return isStr(a.blockId);
     if (a.type === 'time') return TIME.test(a.time);
+    if (a.type === 'routine') return isStr(a.routineId);
+    if (a.type === 'situation') return isStr(a.label, 20);
+    if (a.type === 'dayoff') return true;
     return false;
   }
+  function isSituationAnchor(a) { return !!a && (a.type === 'block' || a.type === 'routine' || a.type === 'situation' || a.type === 'dayoff'); }
+  function validEvent(ev) { return !!ev && isStr(ev.id) && isStr(ev.label, 20) && isDate(ev.at); }
   function validMeasure(m) {
     if (!m || typeof m !== 'object') return false;
     if (m.type === 'fixed') return Number.isInteger(m.amount) && m.amount >= 1 && isStr(m.unit, 10);
@@ -57,7 +63,8 @@
   }
   function validRoutine(r) {
     return !!r && isStr(r.id) && isStr(r.name, 50) && isStr(r.category, 20) &&
-      Number.isInteger(r.perWeek) && r.perWeek >= 1 && r.perWeek <= 7 &&
+      // 상황 루틴은 "상황이 올 때마다"라 perWeek가 없어도 된다
+      ((r.perWeek == null && isSituationAnchor(r.anchor)) || (Number.isInteger(r.perWeek) && r.perWeek >= 1 && r.perWeek <= 7)) &&
       isPos(r.baseMin, 720) && isPos(r.minMin, 720) && r.minMin < r.baseMin &&
       validAnchor(r.anchor) && validMeasure(r.measure) && isDate(r.createdAt);
   }
@@ -80,6 +87,8 @@
     if (!Array.isArray(d.routines) || !d.routines.every(validRoutine)) return false;
     if (d.active !== null && !validEntry(d.active, false)) return false;
     if (!Array.isArray(d.records) || !d.records.every(function (r) { return validEntry(r, true); })) return false;
+    // 상황 버튼을 누른 기록 (없어도 됨)
+    if (d.events != null && !(Array.isArray(d.events) && d.events.every(validEvent))) return false;
     // v2: 이번 주 넘긴 제안 목록 (없어도 됨)
     if (d.dismissed != null && !(Array.isArray(d.dismissed) && d.dismissed.every(function (k) { return typeof k === 'string'; }))) return false;
     return true;
