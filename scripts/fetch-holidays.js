@@ -31,6 +31,17 @@ function normalize(json) {
     });
 }
 
+/* XML 응답(포털 문서의 기본 형식)을 JSON 응답과 같은 모양으로 바꾼다 */
+function fromXml(xml) {
+  const tag = (src, name) => { const m = src.match(new RegExp('<' + name + '>([\\s\\S]*?)</' + name + '>')); return m ? m[1].trim() : ''; };
+  const code = tag(xml, 'resultCode') || tag(xml, 'returnReasonCode');
+  const msg = tag(xml, 'resultMsg') || tag(xml, 'returnAuthMsg') || tag(xml, 'errMsg');
+  const items = (xml.match(/<item>[\s\S]*?<\/item>/g) || []).map((it) => ({
+    dateName: tag(it, 'dateName'), isHoliday: tag(it, 'isHoliday'), locdate: tag(it, 'locdate')
+  }));
+  return { response: { header: { resultCode: code === '00' ? '00' : (code || '?'), resultMsg: msg }, body: { items: items.length ? { item: items } : '' } } };
+}
+
 /* 같은 날 두 이름(예: 어린이날·부처님오신날)은 하나로 합친다 */
 function merge(list) {
   const map = new Map();
@@ -44,18 +55,17 @@ function merge(list) {
 
 async function fetchMonth(key, year, month) {
   const url = new URL(ENDPOINT);
+  // 요청변수는 공공데이터포털 문서 기준: ServiceKey, pageNo, numOfRows, solYear, solMonth
   url.search = new URLSearchParams({
-    serviceKey: key, solYear: String(year), solMonth: String(month).padStart(2, '0'), _type: 'json', numOfRows: '50'
+    ServiceKey: key, pageNo: '1', numOfRows: '50',
+    solYear: String(year), solMonth: String(month).padStart(2, '0'), _type: 'json'
   }).toString();
   const res = await fetch(url);
   if (!res.ok) throw new Error(year + '-' + month + ' HTTP ' + res.status);
-  const text = await res.text();
-  let json;
-  try { json = JSON.parse(text); } catch (e) {
-    // 인증키 오류는 JSON이 아니라 XML로 온다
-    throw new Error(year + '-' + month + ' JSON이 아닌 응답 (인증키를 확인해 주세요): ' + text.slice(0, 120).replace(/\s+/g, ' '));
-  }
-  return normalize(json);
+  const text = (await res.text()).trim();
+  // JSON을 요청하지만, XML로 오면(기본 형식, 인증키 오류 등) XML로 읽는다
+  const json = text.startsWith('<') ? fromXml(text) : JSON.parse(text);
+  try { return normalize(json); } catch (e) { throw new Error(year + '-' + month + ' ' + e.message); }
 }
 
 async function main() {
@@ -88,5 +98,5 @@ async function main() {
   console.log('저장: ' + holidays.length + '일 (' + years.join(', ') + ')');
 }
 
-module.exports = { normalize, merge };
+module.exports = { normalize, merge, fromXml };
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });

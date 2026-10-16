@@ -376,3 +376,16 @@ test('공휴일 API 응답 정리: 0건·1건·여러 건, 같은 날은 이름 
   assert.deepEqual(merge(many), [{ date: '2025-05-05', name: '어린이날 · 부처님오신날' }]);
   assert.throws(() => normalize({ response: { header: { resultCode: '30', resultMsg: 'SERVICE KEY IS NOT REGISTERED' } } }), /API 오류: 30/);
 });
+
+test('공휴일 API XML 응답도 같은 모양으로 읽는다', () => {
+  const { normalize, fromXml } = require('../scripts/fetch-holidays.js');
+  const xml = '<?xml version="1.0" encoding="UTF-8"?><response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>' +
+    '<body><items><item><dateKind>01</dateKind><dateName>개천절</dateName><isHoliday>Y</isHoliday><locdate>20261003</locdate><seq>1</seq></item>' +
+    '<item><dateKind>01</dateKind><dateName>한글날</dateName><isHoliday>Y</isHoliday><locdate>20261009</locdate><seq>1</seq></item></items>' +
+    '<numOfRows>50</numOfRows><pageNo>1</pageNo><totalCount>2</totalCount></body></response>';
+  assert.deepEqual(normalize(fromXml(xml)), [{ date: '2026-10-03', name: '개천절' }, { date: '2026-10-09', name: '한글날' }]);
+  const empty = '<response><header><resultCode>00</resultCode><resultMsg>OK</resultMsg></header><body><items/><totalCount>0</totalCount></body></response>';
+  assert.deepEqual(normalize(fromXml(empty)), []);
+  const keyErr = '<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>';
+  assert.throws(() => normalize(fromXml(keyErr)), /API 오류: 30 SERVICE_KEY_IS_NOT_REGISTERED_ERROR/);
+});
