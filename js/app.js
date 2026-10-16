@@ -22,7 +22,6 @@
     showAll: false,
     editBlock: null,
     editRoutine: null,
-    confirm: null,        // 삭제 확인 중인 항목 'r:<id>' | 'b:<id>'
     pendingImport: null,
     editRecord: null,     // 고치는 중인 기록 id
     more: null,           // 오늘 탭에서 '더보기'를 연 루틴 id
@@ -52,6 +51,19 @@
       el.append(c.nodeType ? c : String(c));
     }
     return el;
+  }
+
+  /* 연필 아이콘 버튼 (고치기). 지우기는 고치기 창 안에서 */
+  function pencilBtn(label, onclick, cls) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '18'); svg.setAttribute('height', '18');
+    svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z');
+    svg.append(path);
+    return h('button', { type: 'button', class: 'icon-btn' + (cls ? ' ' + cls : ''), 'aria-label': label, title: '고치기', onclick }, svg);
   }
 
   function uid(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -124,6 +136,13 @@
   // ---------- 상태 안내 ----------
   /* action: { label, onclick } — 예: 지운 기록 되돌리기 */
   function showStatus(kind, title, body, action) {
+    // 설정 창이 열려 있으면 창 안에도 같은 안내를 보여 준다 (창 뒤의 안내는 안 보이므로)
+    const sd = $('settingsDialog');
+    if (sd && sd.open) {
+      const box = $('settingsStatus');
+      box.className = 'status ' + kind;
+      box.replaceChildren(...[h('strong', null, title), body ? h('span', null, body) : null].filter(Boolean));
+    }
     const el = $('status');
     el.className = 'status ' + kind;
     el.replaceChildren(...[h('strong', null, title), body ? h('span', null, body) : null,
@@ -1148,7 +1167,8 @@
       nodes.push(h('ul', { class: 'items plain-list', role: 'list' }, state.routines.map((r) => {
         const li = h('li', { class: 'item', id: 'rc-' + r.id },
           h('div', { class: 'item-head' }, h('h3', { class: 'item-name' }, r.name),
-            h('span', { class: 'row' }, h('span', { class: 'kind-tag ' + C.routineKind(r) }, kindName(r)), h('span', { class: 'tag' }, r.category))),
+            h('span', { class: 'row' }, h('span', { class: 'kind-tag ' + C.routineKind(r) }, kindName(r)), h('span', { class: 'tag' }, r.category),
+              pencilBtn(q(r.name) + ' 고치기', () => editRoutine(r.id)))),
           ruleLine(r, null),
           h('div', { class: 'facts' },
             h('p', null, goalText(r) + ' · 기본 ' + r.baseMin + '분 / 최소 ' + r.minMin + '분 · ' + measureText(r.measure)),
@@ -1158,41 +1178,15 @@
               (() => { const st = C.streak(r, sitEnv(now)); return st.current ? ' · ' + streakText(st) : ''; })()),
             weeksDots(r),
             r.anchor && r.anchor.type === 'block' && findBlock(r.anchor.blockId)
-              ? h('p', null, '시작 신호 요일: ' + daysText(findBlock(r.anchor.blockId).days)) : null),
-          h('div', { class: 'row' },
-            h('button', { type: 'button', class: 'btn small', onclick: () => editRoutine(r.id), 'aria-label': q(r.name) + ' 고치기' }, '고치기'),
-            h('button', { type: 'button', class: 'btn small danger', onclick: () => askDelete('r:' + r.id), 'aria-label': q(r.name) + ' 지우기' }, '지우기')));
-        if (ui.confirm === 'r:' + r.id) {
-          li.append(h('div', { class: 'confirm' },
-            h('p', null, q(r.name) + ' 루틴을 지울까요? 지금까지의 기록은 돌아보기에 남아요.'),
-            h('div', { class: 'row' },
-              h('button', { type: 'button', class: 'btn danger', id: 'confirmYes', onclick: () => deleteRoutine(r.id) }, '루틴 지우기'),
-              h('button', { type: 'button', class: 'btn', onclick: () => cancelDelete('rc-' + r.id) }, '취소'))));
-        }
+              ? h('p', null, '시작 신호 요일: ' + daysText(findBlock(r.anchor.blockId).days)) : null));
         return li;
       })));
     }
     box.replaceChildren(...nodes);
   }
 
-  function askDelete(key) {
-    ui.confirm = key;
-    if (key.startsWith('r:')) renderRoutines(); else renderWeek();
-    const yes = $('confirmYes');
-    if (yes) yes.focus();
-  }
-  function cancelDelete(itemId) {
-    ui.confirm = null;
-    renderRoutines();
-    renderWeek();
-    const item = $(itemId);
-    const btn = item && item.querySelector('.danger');
-    if (btn) btn.focus();
-  }
-
   function deleteRoutine(id) {
     const r = findRoutine(id);
-    ui.confirm = null;
     if (!r) return;
     if (state.active && state.active.routineId === id) {
       showStatus('error', '진행 중인 루틴은 지울 수 없어요.', '먼저 끝내거나 그만둔 뒤 지워 주세요.');
@@ -1288,6 +1282,8 @@
     $('rFixedUnit').value = '';
     $('rSubmit').textContent = '루틴 만들기';
     $('rCancel').hidden = true;
+    $('rDelete').hidden = true;
+    $('rDeleteConfirm').hidden = true;
     syncAnchorBlocks();
     syncAnchorRoutines();
     toggleRoutineFields();
@@ -1318,6 +1314,7 @@
     if (r.measure.type === 'count') $('rCountUnit').value = r.measure.unit;
     $('rSubmit').textContent = '고친 내용 저장';
     $('rCancel').hidden = false;
+    $('rDelete').hidden = false;
     toggleRoutineFields();
     openEditDialog('routineForm', q(r.name) + ' 고치기', () => {
       const item = $('rc-' + id);
@@ -1360,6 +1357,28 @@
     if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
     $('guideClose').focus();
   }
+  /* 설정 창: 하루 설정 · 공휴일 설정 · 기록 관리 */
+  function openSettings() {
+    const dlg = $('settingsDialog');
+    $('settingsStatus').className = 'status';
+    $('settingsStatus').replaceChildren();
+    fillSettingsForm();
+    renderHolidayInfo();
+    $('sampleBox').hidden = !!hasAnyData();
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    $('settingsClose').focus();
+  }
+  function closeSettings() {
+    const dlg = $('settingsDialog');
+    if (dlg.open) { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
+  }
+  function bindSettings() {
+    $('btnSettings').addEventListener('click', openSettings);
+    $('settingsClose').addEventListener('click', closeSettings);
+    $('settingsDialog').addEventListener('click', (ev) => { if (ev.target === $('settingsDialog')) closeSettings(); });
+    $('settingsDialog').addEventListener('close', () => { $('importConfirm').hidden = true; $('clearConfirm').hidden = true; $('btnSettings').focus(); });
+  }
+
   function bindGuide() {
     document.querySelectorAll('[data-guide]').forEach((el) => el.addEventListener('click', openGuide));
     const close = () => { const dlg = $('guideDialog'); if (dlg.open) { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); } };
@@ -1384,6 +1403,22 @@
     }));
     document.querySelectorAll('input[name="rDay"]').forEach((el) => el.addEventListener('change', () => setErr('rDaysField', '', 'rDaysErr')));
     $('rCancel').addEventListener('click', () => { if (dialog) closeEditDialog(); else resetRoutineForm(); });
+    // 지우기는 고치기 창 안에서, 한 번 더 묻고
+    $('rDelete').addEventListener('click', () => {
+      const r = findRoutine(ui.editRoutine);
+      if (!r) return;
+      const chained = state.routines.filter((x) => x.anchor && x.anchor.type === 'routine' && x.anchor.routineId === r.id);
+      $('rDeleteText').textContent = q(r.name) + ' 루틴을 지울까요? 지금까지의 기록은 돌아보기에 남아요.' +
+        (chained.length ? ' 이 루틴을 끝내면 시작하던 ' + chained.map((x) => q(x.name)).join(', ') + '은(는) 아무 때나 루틴이 돼요.' : '');
+      $('rDeleteConfirm').hidden = false;
+      $('rDeleteNo').focus();
+    });
+    $('rDeleteNo').addEventListener('click', () => { $('rDeleteConfirm').hidden = true; $('rDelete').focus(); });
+    $('rDeleteYes').addEventListener('click', () => {
+      const id = ui.editRoutine;
+      closeEditDialog();
+      deleteRoutine(id);
+    });
     ['rName', 'rCategory', 'rBase', 'rMin', 'rFixedAmount', 'rFixedUnit', 'rCountUnit', 'rAnchorTime', 'rAnchorBlock', 'rAnchorRoutine', 'rAnchorSituation'].forEach((id) =>
       $(id).addEventListener('input', () => { if ($(id).getAttribute('aria-invalid')) setErr(id, '', id.startsWith('rAnchor') ? 'rAnchorErr' : null); }));
 
@@ -1481,20 +1516,10 @@
     nodes.push(h('ul', { class: 'items plain-list', role: 'list', 'aria-label': '고정 일정 목록' }, state.blocks.map((b) => {
       const anchored = state.routines.filter((r) => r.anchor && r.anchor.type === 'block' && r.anchor.blockId === b.id);
       const li = h('li', { class: 'item', id: 'bc-' + b.id },
-        h('div', { class: 'item-head' }, h('h3', { class: 'item-name' }, b.name), h('span', { class: 'tag' }, b.kind)),
+        h('div', { class: 'item-head' }, h('h3', { class: 'item-name' }, b.name),
+          h('span', { class: 'row' }, h('span', { class: 'tag' }, b.kind), pencilBtn(q(b.name) + ' 고치기', () => editBlock(b.id)))),
         h('p', { class: 'sub' }, daysText(b.days) + ' · ', h('span', { class: 'num' }, b.start + '–' + b.end),
-          anchored.length ? ' · 앵커로 쓰는 루틴: ' + anchored.map((r) => r.name).join(', ') : ''),
-        h('div', { class: 'row' },
-          h('button', { type: 'button', class: 'btn small', onclick: () => editBlock(b.id), 'aria-label': q(b.name) + ' 고치기' }, '고치기'),
-          h('button', { type: 'button', class: 'btn small danger', onclick: () => askDelete('b:' + b.id), 'aria-label': q(b.name) + ' 지우기' }, '지우기')));
-      if (ui.confirm === 'b:' + b.id) {
-        li.append(h('div', { class: 'confirm' },
-          h('p', null, q(b.name) + ' 고정 일정을 지울까요?' + (anchored.length
-            ? ' 이걸 앵커로 쓰는 루틴(' + anchored.map((r) => r.name).join(', ') + ')은 ‘빈 시간 아무 때나’로 바뀌어요.' : '')),
-          h('div', { class: 'row' },
-            h('button', { type: 'button', class: 'btn danger', id: 'confirmYes', onclick: () => deleteBlock(b.id) }, '고정 일정 지우기'),
-            h('button', { type: 'button', class: 'btn', onclick: () => cancelDelete('bc-' + b.id) }, '취소'))));
-      }
+          anchored.length ? ' · 시작 신호로 쓰는 루틴: ' + anchored.map((r) => r.name).join(', ') : ''));
       return li;
     })));
     box.replaceChildren(...nodes);
@@ -1546,14 +1571,14 @@
 
   function deleteBlock(id) {
     const b = findBlock(id);
-    ui.confirm = null;
     if (!b) return;
     const anchored = state.routines.filter((r) => r.anchor && r.anchor.type === 'block' && r.anchor.blockId === id);
-    anchored.forEach((r) => { r.anchor = null; });
+    // 시작 신호가 사라진 루틴은 아무 때나 루틴(주 N회)으로. 상황 루틴이라 주 N회가 없었다면 주 3회
+    anchored.forEach((r) => { r.anchor = null; if (!r.perWeek && !(Array.isArray(r.days) && r.days.length)) r.perWeek = 3; });
     state.blocks = state.blocks.filter((x) => x.id !== id);
     if (ui.editBlock === id) resetBlockForm();
     if (commit()) showStatus('info', q(b.name) + ' 고정 일정을 지웠어요.',
-      anchored.length ? anchored.map((r) => q(r.name)).join(', ') + '은(는) 이제 빈 시간 아무 때나 하는 루틴이에요.' : '');
+      anchored.length ? anchored.map((r) => q(r.name)).join(', ') + '은(는) 이제 아무 때나 루틴이에요. 루틴 탭에서 얼마나 자주 할지 확인해 주세요.' : '');
     renderAll();
     $('blockFormH').focus();
   }
@@ -1571,6 +1596,8 @@
     $('bStart').value = '';
     $('bEnd').value = '';
     $('bSubmit').textContent = '고정 일정 넣기';
+    $('bDelete').hidden = true;
+    $('bDeleteConfirm').hidden = true;
     $('bCancel').hidden = true;
   }
 
@@ -1586,6 +1613,7 @@
     $('bEnd').value = b.end;
     $('bSubmit').textContent = '고친 내용 저장';
     $('bCancel').hidden = false;
+    $('bDelete').hidden = false;
     openEditDialog('blockForm', q(b.name) + ' 고치기', () => {
       const item = $('bc-' + id);
       return item ? item.querySelector('button') : $('tab-week');
@@ -1594,6 +1622,21 @@
 
   function bindBlockForm() {
     $('bCancel').addEventListener('click', () => { if (dialog) closeEditDialog(); else resetBlockForm(); });
+    $('bDelete').addEventListener('click', () => {
+      const b = findBlock(ui.editBlock);
+      if (!b) return;
+      const anchored = state.routines.filter((r) => r.anchor && r.anchor.type === 'block' && r.anchor.blockId === b.id);
+      $('bDeleteText').textContent = q(b.name) + ' 고정 일정을 지울까요?' + (anchored.length
+        ? ' 이걸 시작 신호로 쓰는 루틴(' + anchored.map((r) => r.name).join(', ') + ')은 아무 때나 루틴이 돼요.' : '');
+      $('bDeleteConfirm').hidden = false;
+      $('bDeleteNo').focus();
+    });
+    $('bDeleteNo').addEventListener('click', () => { $('bDeleteConfirm').hidden = true; $('bDelete').focus(); });
+    $('bDeleteYes').addEventListener('click', () => {
+      const id = ui.editBlock;
+      closeEditDialog();
+      deleteBlock(id);
+    });
     ['bName', 'bStart', 'bEnd'].forEach((id) => $(id).addEventListener('input', () => { if ($(id).getAttribute('aria-invalid')) setErr(id, ''); }));
     document.querySelectorAll('input[name="bDay"]').forEach((el) => el.addEventListener('change', () => setErr('bDaysSet', '', 'bDaysErr')));
 
@@ -1808,15 +1851,13 @@
           (r.amount ? ' · ' + r.amount + amountUnit : ''),
           r.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null,
           r.edited ? h('span', { class: 'tag' }, '고침') : null),
-        h('span', { class: 'rec-del' },
-          h('button', { type: 'button', class: 'btn small ghost edit', 'aria-label': label + ' 기록 고치기', onclick: () => openRecordEdit(r.id) }, '고치기'),
-          h('button', { type: 'button', class: 'btn small ghost del', 'aria-label': label + ' 기록 지우기', onclick: () => deleteRecord(r.id) }, '지우기')));
+        h('span', { class: 'rec-del' }, pencilBtn(label + ' 기록 고치기', () => (ui.editRecord === r.id ? closeRecordEdit(r.id) : openRecordEdit(r.id)), 'edit')));
       if (ui.editRecord === r.id) li.append(recordEditForm(r, routine));
       return li;
     })));
     if (list.length > shown.length) {
       sec.append(h('button', {
-        type: 'button', class: 'btn', onclick: () => { ui.showAll = true; renderReview(); const items = document.querySelectorAll('#recordList .rec-del .del'); if (items[RECORDS_PAGE]) items[RECORDS_PAGE].focus(); }
+        type: 'button', class: 'btn', onclick: () => { ui.showAll = true; renderReview(); const items = document.querySelectorAll('#recordList .rec-del .edit'); if (items[RECORDS_PAGE]) items[RECORDS_PAGE].focus(); }
       }, '더 보기 (' + (list.length - shown.length) + '개 남음)'));
     }
     return sec;
@@ -1854,7 +1895,8 @@
         h('p', { class: 'err', id: 'eAmtErr' })) : null,
       h('div', { class: 'row' },
         h('button', { type: 'submit', class: 'btn primary small' }, '고친 내용 저장'),
-        h('button', { type: 'button', class: 'btn ghost small', onclick: () => closeRecordEdit(r.id) }, '취소')));
+        h('button', { type: 'button', class: 'btn ghost small', onclick: () => closeRecordEdit(r.id) }, '취소'),
+        h('button', { type: 'button', class: 'btn small danger push-right', onclick: () => deleteRecord(r.id) }, '기록 지우기')));
     form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       clearErrs(form);
@@ -1877,7 +1919,7 @@
 
   /* 지우고 나서 상태 안내의 "되돌리기"로 바로 되살릴 수 있다 */
   function deleteRecord(id) {
-    const idx = [...document.querySelectorAll('#recordList .rec-del .del')].indexOf(document.activeElement);
+    const idx = [...document.querySelectorAll('#recordList > li')].findIndex((li) => li.id === 'rec-' + id);
     const at = state.records.findIndex((r) => r.id === id);
     if (at === -1) return;
     const rec = state.records[at];
@@ -1891,13 +1933,13 @@
           state.records.splice(Math.min(at, state.records.length), 0, rec);
           if (commit()) showStatus('info', q(rec.name) + ' 기록을 되돌렸어요.');
           renderAll();
-          const btn = document.querySelector('#rec-' + CSS.escape(rec.id) + ' .del');
+          const btn = document.querySelector('#rec-' + CSS.escape(rec.id) + ' .edit');
           if (btn) btn.focus();
         }
       });
     }
     renderAll();
-    const after = [...document.querySelectorAll('#recordList .rec-del .del')];
+    const after = [...document.querySelectorAll('#recordList .rec-del .edit')];
     const target = after[Math.max(0, Math.min(idx, after.length - 1))];
     if (target) target.focus(); else { const t = $('tab-review'); if (t) t.focus(); }
   }
@@ -1971,28 +2013,30 @@
     $('btnClearNo').addEventListener('click', () => { $('clearConfirm').hidden = true; $('btnClear').focus(); });
     $('btnClearYes').addEventListener('click', () => {
       state = S.empty();
-      ui.panel = null; ui.confirm = null; ui.filter = '전체'; ui.editRecord = null;
+      ui.panel = null; ui.filter = '전체'; ui.editRecord = null;
       resetBlockForm();
       resetRoutineForm();
       $('clearConfirm').hidden = true;
       if (commit()) showStatus('info', '모든 데이터를 지웠어요.', '주간 틀에 고정 일정을 넣는 것부터 다시 시작할 수 있어요.');
       renderAll();
-      $('tab-review').focus();
+      $('sampleBox').hidden = false;
+      $('btnClear').focus();
     });
 
     $('btnSample').addEventListener('click', () => {
       if (hasAnyData()) return;
       state = window.Sample.build(new Date());
-      if (commit()) showStatus('info', '예시 데이터를 넣었어요.', '대학생 한 명의 5주치 기록이에요. 돌아보기 › 기록 관리 › 전체 삭제로 언제든 지울 수 있어요.');
+      if (commit()) showStatus('info', '예시 데이터를 넣었어요.', '대학생 한 명의 5주치 기록이에요. 설정(톱니바퀴) › 기록 관리 › 전체 삭제로 언제든 지울 수 있어요.');
       resetRoutineForm();
       renderAll();
+      closeSettings();
       switchTab('today', 'todayH');
     });
   }
 
   function applyImport(d) {
     state = normalizeState(d);
-    ui.panel = null; ui.confirm = null; ui.filter = '전체'; ui.editRecord = null;
+    ui.panel = null; ui.filter = '전체'; ui.editRecord = null;
     resetBlockForm();
     resetRoutineForm();
     if (commit()) showStatus('info', '기록을 가져왔어요.', countsText(state));
@@ -2027,6 +2071,7 @@
     bindBlockForm();
     bindEditDialog();
     bindGuide();
+    bindSettings();
     bindHolidayForm();
     bindSettingsForm();
     bindData();
@@ -2040,7 +2085,7 @@
       } else {
         showStatus('error', '저장된 기록이 손상돼서 읽지 못했어요.',
           (res.backedUp ? '원래 데이터는 지우지 않고 따로 보관해 뒀어요. ' : '') +
-          '내보낸 파일이 있다면 돌아보기 › 기록 관리 › 가져오기로 되살릴 수 있어요. 없다면 새로 시작하면 돼요.');
+          '내보낸 파일이 있다면 설정(톱니바퀴) › 기록 관리 › 가져오기로 되살릴 수 있어요. 없다면 새로 시작하면 돼요.');
       }
     } else {
       state = normalizeState(res.data || S.empty());
@@ -2050,6 +2095,7 @@
     resetBlockForm();
     const start = location.hash.slice(1);
     switchTab(TABS.includes(start) ? start : 'today');
+    if (start === 'sample') setTimeout(openSettings, 0); // 앱 소개의 '예시 데이터로 둘러보기'
     renderAll();
     renderHolidayInfo();
     loadHolidays();

@@ -22,6 +22,9 @@
       <h1 class="brand">루틴메이커</h1>
       <a class="about" href="intro.html">앱 소개</a>
       <button type="button" class="about guide-btn" data-guide>가이드</button>
+      <button type="button" class="icon-btn settings-btn" id="btnSettings" aria-label="설정" title="설정">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
     </div>
     <nav class="tabs" role="tablist" aria-label="화면">
       <button type="button" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true">오늘</button>
@@ -126,23 +129,6 @@
     <section id="panel-calendar" role="tabpanel" aria-labelledby="tab-calendar" hidden>
       <div id="calendarDyn"></div>
 
-      <section class="card" aria-labelledby="holidayH">
-        <h2 id="holidayH">공휴일 설정</h2>
-        <form id="holidayForm" novalidate>
-          <fieldset class="choice">
-            <legend>공휴일에 쉬는 고정 일정</legend>
-            <div class="row">
-              <label class="check"><input type="checkbox" name="sHolidayOff" value="수업"> 수업</label>
-              <label class="check"><input type="checkbox" name="sHolidayOff" value="통학"> 통학</label>
-              <label class="check"><input type="checkbox" name="sHolidayOff" value="알바"> 알바</label>
-              <label class="check"><input type="checkbox" name="sHolidayOff" value="기타"> 기타</label>
-            </div>
-            <p class="hint">고른 종류는 공휴일에 빼고 빈 시간을 계산해요.</p>
-          </fieldset>
-          <p class="hint" id="holidayInfo"></p>
-          <div class="row"><button type="submit" class="btn">저장</button></div>
-        </form>
-      </section>
     </section>
 
     <!-- 루틴 -->
@@ -277,6 +263,14 @@
           <div class="row">
             <button type="submit" class="btn primary" id="rSubmit">루틴 만들기</button>
             <button type="button" class="btn ghost" id="rCancel" hidden>수정 취소</button>
+            <button type="button" class="btn danger push-right" id="rDelete" hidden>루틴 지우기</button>
+          </div>
+          <div class="confirm" id="rDeleteConfirm" hidden>
+            <p id="rDeleteText"></p>
+            <div class="row">
+              <button type="button" class="btn danger" id="rDeleteYes">지우기</button>
+              <button type="button" class="btn" id="rDeleteNo">취소</button>
+            </div>
           </div>
         </form>
       </section>
@@ -330,11 +324,39 @@
           <div class="row">
             <button type="submit" class="btn primary" id="bSubmit">고정 일정 넣기</button>
             <button type="button" class="btn ghost" id="bCancel" hidden>수정 취소</button>
+            <button type="button" class="btn danger push-right" id="bDelete" hidden>고정 일정 지우기</button>
+          </div>
+          <div class="confirm" id="bDeleteConfirm" hidden>
+            <p id="bDeleteText"></p>
+            <div class="row">
+              <button type="button" class="btn danger" id="bDeleteYes">지우기</button>
+              <button type="button" class="btn" id="bDeleteNo">취소</button>
+            </div>
           </div>
         </form>
       </section>
 
-      <section class="card" aria-labelledby="settingsH">
+    </section>
+
+    <!-- 돌아보기 -->
+    <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" hidden>
+      <div id="reviewDyn"></div>
+
+    </section>
+  </main>
+
+  <datalist id="categoryList"></datalist>
+</div>
+
+<!-- 설정: 하루 설정 · 공휴일 설정 · 기록 관리 -->
+<dialog id="settingsDialog" class="dialog" aria-labelledby="settingsTitle">
+  <div class="dialog-head">
+    <h2 id="settingsTitle">설정</h2>
+    <button type="button" class="btn ghost small" id="settingsClose">닫기</button>
+  </div>
+  <div class="settings-body">
+    <div id="settingsStatus" class="status" role="status" aria-live="polite"></div>
+      <section class="set-sec" aria-labelledby="settingsH">
         <h2 id="settingsH">하루 설정</h2>
         <form id="settingsForm" novalidate>
           <div class="grid3">
@@ -359,13 +381,24 @@
           <div class="row"><button type="submit" class="btn">설정 저장</button></div>
         </form>
       </section>
-    </section>
-
-    <!-- 돌아보기 -->
-    <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" hidden>
-      <div id="reviewDyn"></div>
-
-      <section class="card" aria-labelledby="dataH">
+      <section class="set-sec" aria-labelledby="holidayH">
+        <h2 id="holidayH">공휴일 설정</h2>
+        <form id="holidayForm" novalidate>
+          <fieldset class="choice">
+            <legend>공휴일에 쉬는 고정 일정</legend>
+            <div class="row">
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="수업"> 수업</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="통학"> 통학</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="알바"> 알바</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="기타"> 기타</label>
+            </div>
+            <p class="hint">고른 종류는 공휴일에 빼고 빈 시간을 계산해요.</p>
+          </fieldset>
+          <p class="hint" id="holidayInfo"></p>
+          <div class="row"><button type="submit" class="btn">저장</button></div>
+        </form>
+      </section>
+      <section class="set-sec" aria-labelledby="dataH">
         <h2 id="dataH">기록 관리</h2>
         <p class="sub">기록은 이 브라우저에만 저장되고 어디에도 보내지 않아요. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 내보내 두세요.</p>
         <div class="row">
@@ -393,11 +426,8 @@
           <button type="button" class="btn" id="btnSample">예시 데이터로 둘러보기</button>
         </div>
       </section>
-    </section>
-  </main>
-
-  <datalist id="categoryList"></datalist>
-</div>
+  </div>
+</dialog>
 
 <!-- 가이드: 활동 다섯 가지 -->
 <dialog id="guideDialog" class="dialog guide" aria-labelledby="guideTitle">
