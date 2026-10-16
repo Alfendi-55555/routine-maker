@@ -16,6 +16,9 @@ const OUT = path.join(__dirname, '..', 'data', 'holidays.json');
 /* API 응답 하나 → [{ date: 'YYYY-MM-DD', name }] (공휴일만).
  * 결과가 0건이면 items가 빈 문자열, 1건이면 item이 배열이 아니라 객체로 온다. */
 function normalize(json) {
+  // 인증키 오류는 { OpenAPI_ServiceResponse: { cmmMsgHeader: {...} } } 모양으로 온다
+  const auth = json && json.OpenAPI_ServiceResponse && json.OpenAPI_ServiceResponse.cmmMsgHeader;
+  if (auth) throw new Error('API 오류: ' + auth.returnReasonCode + ' ' + auth.errMsg + ' (' + auth.returnAuthMsg + ')');
   const header = json && json.response && json.response.header;
   if (!header || header.resultCode !== '00') {
     throw new Error('API 오류: ' + (header ? header.resultCode + ' ' + header.resultMsg : '응답 형식이 다름'));
@@ -53,6 +56,23 @@ function merge(list) {
   return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, name]) => ({ date, name }));
 }
 
+/* 네트워크 오류면 잠깐 쉬고 다시, 그래도 안 되면 http로 한 번 더. 실패하면 원인(cause)을 함께 알린다 */
+async function request(url) {
+  const tries = [url, url, new URL(url.href.replace(/^https:/, 'http:'))];
+  let last;
+  for (let i = 0; i < tries.length; i++) {
+    try {
+      return await fetch(tries[i], { signal: AbortSignal.timeout(20000) });
+    } catch (e) {
+      last = e;
+      const why = e.cause ? (e.cause.code || '') + ' ' + (e.cause.message || '') : e.message;
+      console.log('연결 실패 (' + (i + 1) + '/' + tries.length + ', ' + tries[i].protocol + '): ' + why.trim());
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  throw new Error('공공데이터포털에 연결하지 못했어요: ' + (last.cause ? last.cause.code || last.cause.message : last.message));
+}
+
 async function fetchMonth(key, year, month) {
   const url = new URL(ENDPOINT);
   // 요청변수는 공공데이터포털 문서 기준: ServiceKey, pageNo, numOfRows, solYear, solMonth
@@ -60,9 +80,10 @@ async function fetchMonth(key, year, month) {
     ServiceKey: key, pageNo: '1', numOfRows: '50',
     solYear: String(year), solMonth: String(month).padStart(2, '0'), _type: 'json'
   }).toString();
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(year + '-' + month + ' HTTP ' + res.status);
+  const res = await request(url);
   const text = (await res.text()).trim();
+  // 인증 오류 등은 401과 함께 XML 본문이 오므로, 상태 코드보다 본문을 먼저 읽는다
+  if (!res.ok && !text.startsWith('<') && !text.startsWith('{')) throw new Error(year + '-' + month + ' HTTP ' + res.status);
   // JSON을 요청하지만, XML로 오면(기본 형식, 인증키 오류 등) XML로 읽는다
   const json = text.startsWith('<') ? fromXml(text) : JSON.parse(text);
   try { return normalize(json); } catch (e) { throw new Error(year + '-' + month + ' ' + e.message); }

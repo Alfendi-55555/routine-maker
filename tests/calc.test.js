@@ -389,3 +389,9 @@ test('공휴일 API XML 응답도 같은 모양으로 읽는다', () => {
   const keyErr = '<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>';
   assert.throws(() => normalize(fromXml(keyErr)), /API 오류: 30 SERVICE_KEY_IS_NOT_REGISTERED_ERROR/);
 });
+
+test('공휴일 API 인증키 오류(JSON)를 이유와 함께 알린다', () => {
+  const { normalize } = require('../scripts/fetch-holidays.js');
+  const err = { OpenAPI_ServiceResponse: { cmmMsgHeader: { errMsg: 'SERVICE_KEY_IS_NOT_REGISTERED_ERROR', returnAuthMsg: '등록되지 않은 서비스키', returnReasonCode: '30' } } };
+  assert.throws(() => normalize(err), /API 오류: 30 SERVICE_KEY_IS_NOT_REGISTERED_ERROR \(등록되지 않은 서비스키\)/);
+});
