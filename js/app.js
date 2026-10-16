@@ -25,6 +25,7 @@
     confirm: null,        // 삭제 확인 중인 항목 'r:<id>' | 'b:<id>'
     pendingImport: null,
     editRecord: null,     // 고치는 중인 기록 id
+    more: null,           // 오늘 탭에서 '더보기'를 연 루틴 id
     calMonth: null,       // 캘린더에 보이는 달 (그달 1일)
     calSel: null,         // 캘린더에서 고른 날 'YYYY-MM-DD'
     lastMinute: -1
@@ -559,6 +560,7 @@
     };
   }
 
+  /* 오늘 화면: 위에서부터 시간 막대 → 지금 → 다른 활동 기록하기 → 남은 루틴 → 고정 일정 */
   function renderToday() {
     const box = $('todayDyn');
     const L = nowL();
@@ -566,24 +568,18 @@
     const s = state.settings;
     const gaps = C.computeGaps(ctx.blocks, L.weekday, s, L.nowMin);
     const todays = C.dayBlocks(ctx.blocks, L.weekday);
-    const left = gaps.reduce((sum, g) => sum + g.remaining, 0);
     const infos = state.routines.map((r) => routineInfo(r, L, gaps, ctx));
     const skipped = ctx.holiday ? C.dayBlocks(state.blocks, L.weekday).filter((b) => ctx.off.includes(b.kind)) : [];
     ui.lastMinute = L.nowMin;
 
     const nodes = [];
-    nodes.push(h('div', { class: 'day-head' },
-      h('h2', { id: 'todayH', tabindex: '-1' }, (L.day.getMonth() + 1) + '월 ' + L.day.getDate() + '일 ' + C.DAY_NAMES[L.weekday] + '요일' +
-        (L.nowMin >= 1440 ? ' 밤' : ''),
-        ctx.holiday ? h('span', { class: 'pill holiday' }, ctx.holiday) : null),
-      h('p', { class: 'sub' }, state.blocks.length
-        ? '오늘 고정 일정 ' + todays.length + '개 · 남은 빈 시간 ' + C.fmtDuration(left)
-        : '고정 일정을 넣으면 오늘의 빈 시간이 보여요.'),
-      skipped.length ? h('p', { class: 'sub' }, '공휴일이라 ' + skipped.map((b) => q(b.name)).join(', ') + '은(는) 빼고 계산했어요. 바꾸려면 주간 틀 › 하루 설정에서 고르세요.') : null));
-
-    const banner = reviewBanner();
-    if (banner) nodes.push(banner);
-    if (!state.active && (state.blocks.length || state.routines.length)) nodes.push(nowCard(L, gaps, todays, infos));
+    nodes.push(h('div', { class: 'today-head' },
+      h('div', { class: 'day-head' },
+        h('h2', { id: 'todayH', tabindex: '-1' }, (L.day.getMonth() + 1) + '월 ' + L.day.getDate() + '일 ' + C.DAY_NAMES[L.weekday] + '요일' +
+          (L.nowMin >= 1440 ? ' 밤' : ''),
+          ctx.holiday ? h('span', { class: 'pill holiday' }, ctx.holiday) : null),
+        skipped.length ? h('p', { class: 'sub' }, '공휴일이라 ' + skipped.map((b) => q(b.name)).join(', ') + '은(는) 빼고 계산했어요.') : null),
+      reviewBanner()));
 
     if (!state.blocks.length) {
       nodes.push(emptyBox('아직 고정 일정이 없어요.',
@@ -592,49 +588,76 @@
           h('button', { type: 'button', class: 'btn primary', onclick: () => switchTab('week', 'bName') }, '주간 틀에 고정 일정 넣기'),
           hasAnyData() ? null : h('a', { class: 'btn ghost', href: 'intro.html' }, '처음이라면 앱 소개 보기'))));
     } else {
-      nodes.push(dayCard(todays, gaps, L.nowMin));
+      nodes.push(dayCard(todays, gaps, L.nowMin, infos));
     }
-    nodes.push(todayRoutines(infos));
+
+    let shownId = null;
+    if (!state.active && (state.blocks.length || state.routines.length)) {
+      const now = nowCard(L, gaps, todays, infos);
+      shownId = now.shownId;
+      nodes.push(now.node);
+    }
+    nodes.push(h('button', { type: 'button', class: 'other-btn', id: 'btnOther', onclick: openOtherDialog }, '+ 다른 활동 기록하기'));
+    nodes.push(todayRoutines(infos, shownId));
+    if (todays.length) nodes.push(fixedChips(todays, L.nowMin));
     box.replaceChildren(...nodes);
     updateTaskHint();
   }
 
-  /* 지금 카드: 지금이 빈 시간인지, 남은 시간에 들어가는 루틴이 무엇인지 */
+  /* 다른 활동(반복하지 않는 일) 기록하기: 입력칸을 화면 위 창으로 */
+  function openOtherDialog() {
+    openEditDialog('taskForm', '다른 활동 기록하기', () => (state.active ? $('activeTitle') : $('btnOther')), null);
+    updateTaskHint();
+  }
+
+  const FIT_LONG = { fits: '남은 시간 안에 끝나요', min: '최소 버전만 끝낼 수 있어요', tight: '시간이 모자라요', nogap: '오늘 남은 빈 시간이 없어요' };
+  const FIT_SHORT = { fits: '시간 충분', min: '최소만 가능', tight: '시간 부족', nogap: '빈 시간 없음' };
+
+  /* 지금: 크림색 한 줄. 빈 시간이면 남은 시간에 끝낼 수 있는 루틴 하나와 시작 버튼 */
   function nowCard(L, gaps, todays, infos) {
     const s = state.settings;
     const ds = C.toMin(s.dayStart), de = C.dayEndMin(s);
-    const card = h('section', { class: 'card now-card', 'aria-labelledby': 'nowH' }, h('h3', { id: 'nowH' }, '지금'));
-    if (L.nowMin < ds) { card.append(h('p', null, '하루 시작 전이에요. ' + s.dayStart + '부터 빈 시간을 계산해요.')); return card; }
-    if (L.nowMin >= de) { card.append(h('p', null, '오늘 활동 시간이 끝났어요. 수고했어요.')); return card; }
+    const card = h('section', { class: 'now-block', 'aria-labelledby': 'nowH' });
+    const head = (text) => h('p', { id: 'nowH', class: 'now-head' }, text);
+    if (L.nowMin < ds) { card.append(head('지금 · 하루 시작 전이에요 (' + s.dayStart + '부터)')); return { node: card, shownId: null }; }
+    if (L.nowMin >= de) { card.append(head('지금 · 오늘 활동 시간이 끝났어요')); return { node: card, shownId: null }; }
 
     const inBlock = todays.find((b) => C.toMin(b.start) <= L.nowMin && L.nowMin < C.toMin(b.end));
     if (inBlock) {
       const next = infos.filter((i) => i.todo && i.anchor.type === 'block' && i.anchor.today && i.anchor.block.id === inBlock.id);
-      card.append(h('p', null, q(inBlock.name) + ' 시간이에요. ', h('span', { class: 'num' }, inBlock.end), '에 끝나요.'));
+      card.append(head('지금 · ' + q(inBlock.name) + ' 시간, ' + inBlock.end + '에 끝나요'));
       if (next.length) card.append(h('p', { class: 'sub' }, '끝나면 → ' + next.map((i) => i.r.name).join(', ')));
-      return card;
+      return { node: card, shownId: null };
     }
     const gap = gaps.find((g) => g.state === 'now');
-    if (!gap) { card.append(h('p', null, '고정 일정 사이 전환 시간이에요. 곧 빈 시간이 시작돼요.')); return card; }
+    if (!gap) { card.append(head('지금 · 고정 일정 사이 이동 시간이에요')); return { node: card, shownId: null }; }
 
-    card.append(h('p', null, '빈 시간이에요. ', h('span', { class: 'num' }, C.fmtHM(gap.end)), '까지 ', h('strong', null, C.fmtDuration(gap.remaining)), ' 남았어요.'));
-    const fits = infos.filter((i) => i.todo && i.predMin <= gap.remaining)
+    card.append(head('지금 · 빈 시간, ' + C.fmtHM(gap.end) + '까지 ' + C.fmtDuration(gap.remaining)));
+    if (!state.routines.length) return { node: card, shownId: null };
+    const pick = infos.filter((i) => i.todo && i.predMin <= gap.remaining)
       .map((i) => Object.assign({}, i, { nowFit: i.predBase <= gap.remaining ? 'fits' : 'min' }))
-      .sort((a, b) => (b.missed - a.missed) || ((b.since != null) - (a.since != null)) || (a.nowFit === 'fits' ? -1 : 1) - (b.nowFit === 'fits' ? -1 : 1))
-      .slice(0, 2);
-    if (!state.routines.length) return card;
-    if (!fits.length) {
-      card.append(h('p', { class: 'sub' }, '남은 시간에 들어가는 루틴이 없어요. 한 번만 하는 일을 해도 좋아요.'));
-      return card;
+      .sort((a, b) => (b.missed - a.missed) || ((b.since != null) - (a.since != null)) || (a.nowFit === 'fits' ? -1 : 1) - (b.nowFit === 'fits' ? -1 : 1))[0];
+    if (!pick) {
+      card.append(h('p', { class: 'sub' }, '남은 시간에 끝낼 수 있는 루틴이 없어요. 다른 활동을 기록해도 좋아요.'));
+      return { node: card, shownId: null };
     }
-    card.append(h('ul', { class: 'plain' }, fits.map((i) => h('li', { class: 'now-row' },
-      h('span', null, h('strong', null, i.r.name), ' ',
-        h('span', { class: 'pill ' + i.nowFit }, i.nowFit === 'fits' ? '기본 약 ' + i.predBase + '분 들어가요' : '최소 약 ' + i.predMin + '분만 들어가요'),
-        i.since != null ? h('span', { class: 'sub' }, ' · ' + sinceText(i)) : null),
-      h('button', {
-        type: 'button', class: 'btn small primary', onclick: () => onStartRoutine(i.r, i.nowFit === 'fits' ? 'base' : 'min')
-      }, i.nowFit === 'fits' ? '시작' : '최소 버전 시작')))));
-    return card;
+    const r = pick.r;
+    const version = pick.nowFit === 'fits' ? 'base' : 'min';
+    card.id = 'ti-' + r.id;
+    card.append(
+      h('div', { class: 'now-row' },
+        h('span', { class: 'dot routine', 'aria-hidden': 'true' }),
+        h('div', { class: 'now-main' },
+          h('span', { class: 'now-name' }, r.name),
+          h('span', { class: 'now-meta' }, '약 ' + (version === 'base' ? pick.predBase : pick.predMin) + '분' +
+            (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.missed ? ' · 어제 못 했어요' : ''))),
+        h('button', { type: 'button', class: 'btn primary start-btn', onclick: () => onStartRoutine(r, version) },
+          version === 'base' ? '시작' : '최소 버전 시작')),
+      h('div', { class: 'now-foot' },
+        h('span', { class: 'fit-chip ' + pick.nowFit }, FIT_LONG[pick.nowFit]),
+        version === 'base' ? h('button', { type: 'button', class: 'link-btn', onclick: () => onStartRoutine(r, 'min') }, '최소 버전 ' + r.minMin + '분') : null));
+    if (ui.panel && ui.panel.routineId === r.id) card.append(routinePanel(r));
+    return { node: card, shownId: r.id };
   }
 
   function sinceText(info) {
@@ -642,77 +665,89 @@
     return (a.type === 'block' ? q(a.block.name) + ' 끝난 지 ' : a.time + '부터 ') + info.since + '분';
   }
 
-  function dayCard(todays, gaps, nowMin) {
+  /* 오늘의 시간: 고정 일정은 회색, 빈 시간은 민트, 루틴 시작 신호는 청록 점, 지금은 세로선 */
+  function dayCard(todays, gaps, nowMin, infos) {
     const s = state.settings;
     const ds = C.toMin(s.dayStart), de = C.dayEndMin(s), total = de - ds;
-    const pos = (a, b) => {
-      a = Math.max(a, ds); b = Math.min(b, de);
-      return 'left:' + ((a - ds) / total * 100) + '%;width:' + (Math.max(0, b - a) / total * 100) + '%';
-    };
-    const bar = h('div', { class: 'timeline', 'aria-hidden': 'true' });
+    const pct = (m) => (Math.min(Math.max(m, ds), de) - ds) / total * 100;
+    const pos = (a, b) => 'left:' + pct(a) + '%;width:' + Math.max(0, pct(b) - pct(a)) + '%';
+    const bar = h('div', { class: 'timeline' });
     gaps.forEach((g) => bar.append(h('span', { class: 'tl-gap' + (g.state === 'past' ? ' past' : ''), style: pos(g.start, g.end) })));
     todays.forEach((b) => bar.append(h('span', {
-      class: 'tl-block ' + kindClass(b.kind) + (C.toMin(b.end) <= nowMin ? ' past' : ''), style: pos(C.toMin(b.start), C.toMin(b.end))
+      class: 'tl-block' + (C.toMin(b.end) <= nowMin ? ' past' : ''), style: pos(C.toMin(b.start), C.toMin(b.end))
     })));
-    if (nowMin >= ds && nowMin <= de) bar.append(h('span', { class: 'tl-now', style: 'left:' + ((nowMin - ds) / total * 100) + '%' }));
+    const marks = infos.filter((i) => i.todo && i.anchor.today && i.anchor.plannedMin != null && i.anchor.plannedMin >= ds && i.anchor.plannedMin <= de);
+    const track = h('div', { class: 'tl-track', 'aria-hidden': 'true' },
+      marks.map((i) => h('span', { class: 'tl-mark', style: 'left:' + pct(i.anchor.plannedMin) + '%', title: i.r.name + ' · ' + C.fmtHM(i.anchor.plannedMin) })),
+      bar,
+      nowMin >= ds && nowMin <= de ? h('span', { class: 'tl-now', style: 'left:' + pct(nowMin) + '%' }) : null);
 
-    // 화면 읽기 프로그램도 같은 내용을 읽을 수 있게 글 목록으로도 보여 준다
+    const step = total > 12 * 60 ? 240 : 120;
+    const ticks = [];
+    for (let t = Math.ceil(ds / step) * step; t <= de; t += step) ticks.push(t);
+    const left = gaps.reduce((sum, g) => sum + g.remaining, 0);
+
+    // 화면 읽기 프로그램과 자세히 보고 싶은 사람을 위한 글 목록 (접어 둠)
     const rows = todays.map((b) => ({ start: C.toMin(b.start), block: b }))
       .concat(gaps.map((g) => ({ start: g.start, gap: g })))
       .sort((x, y) => x.start - y.start);
-    const list = h('ul', { class: 'plain', 'aria-label': '오늘 일정과 빈 시간' }, rows.map((row) => {
-      if (row.block) {
-        const b = row.block;
-        return h('li', null, h('div', { class: 'gap-row past' },
-          h('span', null, h('span', { class: 'num' }, b.start + '–' + b.end), ' ' + b.name),
-          h('span', null, b.kind)));
-      }
-      const g = row.gap;
-      const label = g.state === 'past' ? '지남'
-        : g.state === 'now' ? '지금 · ' + C.fmtDuration(g.remaining) + ' 남음'
-          : C.fmtDuration(g.len);
-      return h('li', null, h('div', { class: 'gap-row' + (g.state === 'past' ? ' past' : '') },
-        h('span', { class: 'when' }, h('span', { class: 'num' }, C.fmtHM(g.start) + '–' + C.fmtHM(g.end)), ' 빈 시간'),
-        h('span', null, label)));
-    }));
+    const list = h('details', { class: 'tl-details' },
+      h('summary', null, '일정·빈 시간 목록'),
+      h('ul', { class: 'plain' }, rows.map((row) => {
+        if (row.block) {
+          const b = row.block;
+          return h('li', null, h('div', { class: 'gap-row past' },
+            h('span', null, h('span', { class: 'num' }, b.start + '–' + b.end), ' ' + b.name), h('span', null, '고정 · ' + b.kind)));
+        }
+        const g = row.gap;
+        const label = g.state === 'past' ? '지남' : g.state === 'now' ? '지금 · ' + C.fmtDuration(g.remaining) + ' 남음' : C.fmtDuration(g.len);
+        return h('li', null, h('div', { class: 'gap-row' + (g.state === 'past' ? ' past' : '') },
+          h('span', { class: 'when' }, h('span', { class: 'num' }, C.fmtHM(g.start) + '–' + C.fmtHM(g.end)), ' 빈 시간'), h('span', null, label)));
+      })));
 
-    return h('section', { class: 'card', 'aria-labelledby': 'dayCardH' },
-      h('h3', { id: 'dayCardH' }, '오늘의 시간'),
-      h('div', null, bar,
-        h('div', { class: 'tl-scale', 'aria-hidden': 'true' }, h('span', null, s.dayStart), h('span', null, s.dayEnd + (de > 1440 ? ' (다음 날)' : ''))),
-        h('div', { class: 'legend', 'aria-hidden': 'true' },
-          KIND_ORDER.filter((k) => todays.some((b) => (KIND_CLASS[b.kind] ? b.kind : '기타') === k)).map((k) => h('span', { class: 'lg-k ' + kindClass(k) }, k)),
-          h('span', { class: 'lg-gap' }, '빈 시간'), h('span', { class: 'lg-now' }, '지금'))),
-      gaps.length ? null : h('p', { class: 'sub' }, '오늘은 15분 넘는 빈 시간이 없어요. 루틴은 최소 버전을 고려해 보세요.'),
+    return h('section', { class: 'card day-card', 'aria-labelledby': 'dayCardH' },
+      h('div', { class: 'section-head' },
+        h('h3', { id: 'dayCardH' }, '오늘의 시간'),
+        h('span', { class: 'sub' }, gaps.length ? '빈 시간 ' + C.fmtDuration(left) + ' 남음' : '15분 넘는 빈 시간이 없어요')),
+      track,
+      h('div', { class: 'tl-ticks', 'aria-hidden': 'true' }, ticks.map((t) => h('span', { style: 'left:' + pct(t) + '%' }, (Math.floor(t / 60) % 24) + '시'))),
+      h('div', { class: 'legend', 'aria-hidden': 'true' },
+        h('span', { class: 'lg-block' }, '고정 일정'), h('span', { class: 'lg-gap' }, '빈 시간'),
+        marks.length ? h('span', { class: 'lg-mark' }, '루틴 시작 신호') : null, h('span', { class: 'lg-now' }, '지금')),
       list);
   }
 
-  function todayRoutines(infos) {
+  /* 오늘 남은 루틴: 한 줄씩. 자세한 내용과 최소 버전·직접 기록은 "더보기" */
+  function todayRoutines(infos, shownId) {
     const sec = h('section', { class: 'section', 'aria-labelledby': 'todayRoutinesH' },
-      h('div', { class: 'section-head' },
-        h('h3', { id: 'todayRoutinesH' }, '오늘 할 루틴')));
+      h('h3', { id: 'todayRoutinesH' }, '오늘 남은 루틴'));
     if (!state.routines.length) {
       sec.append(emptyBox('루틴이 없어요.',
         '주 1회처럼 작게 하나 만들어 보세요. 시작 신호(앵커)와 바쁜 날용 최소 버전을 함께 정해요.',
         h('button', { type: 'button', class: 'btn', onclick: () => switchTab('routines', 'rName') }, '루틴 만들기')));
       return sec;
     }
-    const todo = infos.filter((i) => i.todo).sort((a, b) =>
+    const todo = infos.filter((i) => i.todo && i.r.id !== shownId).sort((a, b) =>
       (b.missed - a.missed) || (!!b.tight - !!a.tight) ||
       ((a.anchor.today ? a.anchor.plannedMin : 9999) - (b.anchor.today ? b.anchor.plannedMin : 9999)) ||
       a.r.name.localeCompare(b.r.name));
     const rest = infos.filter((i) => !i.todo);
 
-    if (!todo.length) sec.append(h('p', { class: 'sub' }, '오늘 할 루틴을 모두 했거나 이번 주 횟수를 채웠어요.'));
-    else sec.append(h('ul', { class: 'items plain-list', role: 'list' }, todo.map(todayItem)));
+    if (todo.length) sec.append(h('ul', { class: 'rlist', role: 'list' }, todo.map(todayItem)));
+    else if (!shownId) sec.append(h('p', { class: 'sub' }, '오늘 할 루틴을 모두 했거나 이번 주 횟수를 채웠어요.'));
+    else sec.append(h('p', { class: 'sub' }, '지금 루틴 말고는 오늘 남은 루틴이 없어요.'));
 
     if (rest.length) {
-      sec.append(h('h3', { class: 'sub' }, '오늘은 쉬어도 되는 루틴'),
-        h('ul', { class: 'plain done-list' }, rest.map((i) => h('li', null,
-          i.r.name + ' · ' + (i.doneToday ? '오늘 했어요' : '이번 주 횟수를 채웠어요') +
-          ' (이번 주 ' + i.done + '/' + i.r.perWeek + ')'))));
+      sec.append(h('p', { class: 'sub' }, '오늘은 쉬어도 돼요: ' + rest.map((i) => i.r.name + ' (' + (i.doneToday ? '오늘 했어요' : '이번 주 ' + i.done + '/' + i.r.perWeek) + ')').join(', ')));
     }
     return sec;
+  }
+
+  function anchorShort(r, anchor) {
+    if (anchor.type === 'block' && !anchor.today) return '오늘은 ' + (anchor.holiday ? '공휴일이라 ' : '') + q(anchor.block.name) + ' 없는 날';
+    if (anchor.type === 'block') return q(anchor.block.name) + ' 끝나면';
+    if (anchor.type === 'time') return anchor.time + '부터';
+    return '아무 때나';
   }
 
   function ruleLine(r, anchor) {
@@ -724,40 +759,58 @@
   }
 
   function fitLine(info) {
-    if (info.fit === 'nogap') return h('p', { class: 'fit-line' }, h('span', { class: 'pill nogap' }, '오늘 남은 빈 시간이 없어요'));
-    const label = { fits: '들어가요', min: '최소 버전만 들어가요', tight: '빠듯해요' }[info.fit];
+    if (info.fit === 'nogap') return h('p', { class: 'fit-line' }, h('span', { class: 'fit-chip nogap' }, FIT_LONG.nogap));
     const g = info.pick.gap;
     return h('p', { class: 'fit-line' },
-      h('span', { class: 'pill ' + info.fit }, label),
-      h('span', null, (info.pick.anchored ? '앵커 다음 빈 시간 ' : '남은 가장 큰 빈 시간 ') + C.fmtHM(g.start) + '–' + C.fmtHM(g.end) +
+      h('span', { class: 'fit-chip ' + info.fit }, FIT_LONG[info.fit]),
+      h('span', null, (info.pick.anchored ? '시작 신호 다음 빈 시간 ' : '남은 가장 큰 빈 시간 ') + C.fmtHM(g.start) + '–' + C.fmtHM(g.end) +
         ' · 쓸 수 있는 시간 ' + C.fmtDuration(info.pick.avail)));
   }
 
   function todayItem(info) {
     const r = info.r;
-    const li = h('li', { class: 'item' + (info.missed || info.tight ? ' flagged' : ''), id: 'ti-' + r.id });
-    li.append(h('div', { class: 'item-head' },
-      h('h4', { class: 'item-name' }, r.name),
-      h('span', { class: 'sub num' }, '이번 주 ' + info.done + '/' + r.perWeek)));
-    li.append(ruleLine(r, info.anchor));
-    if (info.since != null) li.append(h('p', { class: 'sub' }, sinceText(info) + ' 지났어요.'));
-    if (info.missed) li.append(h('p', { class: 'flag' }, '어제는 못 했어요. 두 번 연속으로는 놓치지 않기 · 최소 버전도 괜찮아요.'));
-    if (info.tight) li.append(h('p', { class: 'flag' }, '이번 주 ' + info.tight.left + '번 남았는데 남은 날은 ' + info.tight.daysLeft + '일이에요. 하루에 두 번은 한 번으로 세요.'));
-    li.append(h('div', { class: 'facts' }, h('p', null, info.cal
-      ? '기록 기준으로 기본은 약 ' + info.predBase + '분, 최소는 약 ' + info.predMin + '분 걸려요 (' +
-        (info.cal.source === 'routine' ? '이 루틴' : q(r.category) + ' 기록') + ', 예상의 ' + info.cal.ratio.toFixed(1) + '배).'
-      : '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분 · 기록이 3개 쌓이면 실제 걸리는 시간으로 보정해 드려요.')));
-    li.append(fitLine(info));
-
-    const preferMin = info.fit === 'min' || info.fit === 'tight' || info.fit === 'nogap';
-    li.append(h('div', { class: 'row' },
-      h('button', { type: 'button', class: 'btn' + (preferMin ? '' : ' primary'), onclick: () => onStartRoutine(r, 'base') },
-        '시작 · 기본 ' + r.baseMin + '분'),
-      h('button', { type: 'button', class: 'btn' + (preferMin ? ' primary' : ''), onclick: () => onStartRoutine(r, 'min') },
-        '최소 버전 · ' + r.minMin + '분'),
-      h('button', { type: 'button', class: 'btn ghost', onclick: () => openPanel(r.id, 'manual', 'base') }, '타이머 없이 기록')));
+    const open = ui.more === r.id || (ui.panel && ui.panel.routineId === r.id);
+    const notes = [];
+    if (info.missed) notes.push('어제 못 했어요 · 최소 버전도 괜찮아요');
+    if (info.tight) notes.push('이번 주 ' + info.tight.left + '번 남았는데 ' + info.tight.daysLeft + '일 남았어요');
+    if (info.since != null) notes.push(sinceText(info));
+    const li = h('li', { class: 'rrow' + (info.missed || info.tight ? ' flagged' : ''), id: 'ti-' + r.id },
+      h('div', { class: 'rrow-line' },
+        h('span', { class: 'dot routine-soft', 'aria-hidden': 'true' }),
+        h('div', { class: 'rrow-main' },
+          h('h4', { class: 'rrow-name' }, r.name),
+          h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 약 ' + info.predBase + '분 · 이번 주 ' + info.done + '/' + r.perWeek),
+          notes.length ? h('span', { class: 'rrow-note' }, notes.join(' · ')) : null),
+        h('span', { class: 'fit-word ' + info.fit }, FIT_SHORT[info.fit]),
+        h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r, 'base'), 'aria-label': q(r.name) + ' 시작' }, '시작'),
+        h('button', {
+          type: 'button', class: 'more-btn', 'aria-expanded': String(!!open), 'aria-label': q(r.name) + ' 더보기',
+          onclick: () => { ui.more = ui.more === r.id ? null : r.id; if (ui.panel && ui.panel.routineId === r.id) ui.panel = null; renderToday(); const b = document.querySelector('#ti-' + CSS.escape(r.id) + ' .more-btn'); if (b) b.focus(); }
+        }, open ? '접기' : '더보기')));
+    if (open) {
+      li.append(h('div', { class: 'rrow-more' },
+        ruleLine(r, info.anchor),
+        h('p', { class: 'sub' }, info.cal
+          ? '기록 기준으로 기본은 약 ' + info.predBase + '분, 최소는 약 ' + info.predMin + '분 걸려요 (' +
+            (info.cal.source === 'routine' ? '이 루틴' : q(r.category) + ' 기록') + ', 예상의 ' + info.cal.ratio.toFixed(1) + '배).'
+          : '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분 · 기록이 3개 쌓이면 실제 걸리는 시간으로 보정해 드려요.'),
+        fitLine(info),
+        h('div', { class: 'row' },
+          h('button', { type: 'button', class: 'btn small', onclick: () => onStartRoutine(r, 'min') }, '최소 버전 · ' + r.minMin + '분'),
+          h('button', { type: 'button', class: 'btn small ghost', onclick: () => openPanel(r.id, 'manual', 'base') }, '타이머 없이 기록'))));
+    }
     if (ui.panel && ui.panel.routineId === r.id) li.append(routinePanel(r));
     return li;
+  }
+
+  /* 오늘 고정 일정: 회색 칩. 루틴(청록 동그라미)과 모양·색이 다르다 */
+  function fixedChips(todays, nowMin) {
+    return h('section', { class: 'section', 'aria-labelledby': 'fixedH' },
+      h('h3', { id: 'fixedH', class: 'muted-h' }, '오늘 고정 일정'),
+      h('ul', { class: 'fixed-chips' }, todays.map((b) => h('li', { class: 'fchip' + (C.toMin(b.end) <= nowMin ? ' past' : '') },
+        h('span', { class: 'sq', 'aria-hidden': 'true' }),
+        h('span', { class: 'num' }, b.start), ' ' + b.name,
+        h('span', { class: 'sr-only' }, ' (' + b.kind + ', ' + b.end + '까지' + (C.toMin(b.end) <= nowMin ? ', 지남' : '') + ')')))));
   }
 
   function openPanel(routineId, mode, version) {
@@ -937,7 +990,8 @@
       $('tManual').checked = false;
       toggle();
       renderAll();
-      if (manual) $('tName').focus(); else $('activeTitle').focus();
+      if (dialog) closeEditDialog(); // 창은 닫고, 초점은 시작했으면 하는 중 카드, 아니면 다른 활동 버튼으로
+      else if (manual) $('tName').focus(); else $('activeTitle').focus();
     });
   }
 
@@ -1419,9 +1473,8 @@
   function reviewBanner() {
     const list = activeSuggestions().filter((s) => s.kind !== 'steady');
     if (!list.length) return null;
-    return h('div', { class: 'banner' },
-      h('p', null, '지난 기록으로 규칙을 다듬을 제안이 ' + list.length + '개 있어요.'),
-      h('button', { type: 'button', class: 'btn small', onclick: () => switchTab('review', 'suggestH') }, '제안 보기'));
+    return h('button', { type: 'button', class: 'chip-btn', onclick: () => switchTab('review', 'suggestH'), 'aria-label': '규칙 다듬기 제안 ' + list.length + '개 보기' },
+      '제안 ' + list.length + '개');
   }
 
   function dismissSuggestion(key) {

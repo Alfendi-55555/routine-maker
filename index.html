@@ -80,10 +80,11 @@
     <section id="panel-today" role="tabpanel" aria-labelledby="tab-today">
       <div id="todayDyn"></div>
 
-      <section class="card" aria-labelledby="taskH">
-        <h2 id="taskH">한 번만 하는 일</h2>
-        <p class="sub">과제·발표 준비처럼 반복하지 않는 일을 재요.</p>
+      <!-- 다른 활동 기록하기: 오늘 탭의 버튼을 누르면 이 폼이 화면 위 창으로 옮겨져 열린다 -->
+      <section class="card" aria-labelledby="taskH" hidden>
+        <h2 id="taskH">다른 활동 기록하기</h2>
         <form id="taskForm" novalidate>
+          <p class="sub">과제·발표 준비처럼 루틴이 아닌 일을 재거나, 이미 끝낸 일을 기록해요.</p>
           <div class="field">
             <label for="tName">할 일 이름</label>
             <input id="tName" autocomplete="off" placeholder="예: 자료구조 과제 3번" aria-describedby="tNameErr">
