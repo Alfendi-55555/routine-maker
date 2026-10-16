@@ -31,8 +31,12 @@ TODO: GitHub Pages 배포 후 `https://<아이디>.github.io/<저장소이름>/`
 
 ## 5. 데이터 출처와 갱신일
 
-- 외부 데이터 없음. 사용자가 입력한 기록만 브라우저 `localStorage`(키 `routinemaker.v1`)에 저장합니다.
-- 외부 API·인증키를 쓰지 않으므로 GitHub Secrets도 쓰지 않습니다.
+| 데이터 | 출처 | 갱신 | 쓰는 곳 |
+|---|---|---|---|
+| 공휴일 | [한국천문연구원 특일 정보](https://www.data.go.kr/data/15012690/openapi.do) (공공데이터포털) | 매달 1일 GitHub Actions가 받아서 `data/holidays.json`에 저장. 마지막 갱신일은 앱의 주간 틀 › 하루 설정에 표시 | 공휴일에는 수업·통학 같은 고정 일정을 빼고 빈 시간을 계산 |
+| 사용자 기록 | 사용자가 직접 입력 | 입력할 때마다 | 브라우저 `localStorage`(키 `routinemaker.v1`)에만 저장 |
+
+- 인증키는 GitHub Secrets(`DATA_GO_KR_KEY`)에만 두고 GitHub Actions에서만 씁니다. 앱(브라우저)은 저장소에 커밋된 `data/holidays.json`만 읽으므로 키가 공개되지 않습니다.
 - 서버 전송, 로그인, 외부 글꼴·분석 도구 없음.
 - 문서 갱신일: 2026-10-16
 
@@ -62,6 +66,8 @@ TODO: GitHub Pages 배포 후 `https://<아이디>.github.io/<저장소이름>/`
 | 18 | 기록 지우기 → 되돌리기 | 기록이 원래대로 돌아옴 | | | |
 | 19 | 하루 끝 02:00 설정 후 자정 넘어 루틴 기록 | 전날 달성으로 셈 | | | |
 | 20 | 2주 연속 횟수를 못 채운 루틴 | 돌아보기에 횟수 낮추기 제안, 반영하면 루틴이 바뀜 | | | |
+| 21 | Actions "공휴일 갱신" 수동 실행 | `data/holidays.json`에 올해·내년 공휴일이 커밋됨 | | | |
+| 22 | 공휴일 당일 오늘 탭 (수업·통학 쉬기 설정) | 공휴일 표시, 수업·통학을 빼고 빈 시간 계산 | | | |
 
 ## 7. 알려진 한계
 
@@ -91,3 +97,9 @@ Buehler·Griffin·Ross(1994), Kruger·Evans(2004), Gollwitzer·Sheeran(2006), La
 - 빌드 도구·외부 라이브러리 없음. `index.html`을 더블클릭해도 동작합니다.
 - 계산 테스트: `node --test tests/`
 - GitHub Pages: 저장소 Settings → Pages → Branch `main`, 폴더 `/ (root)` → Save
+- 공휴일 데이터 설정
+  1. [공공데이터포털](https://www.data.go.kr/data/15012690/openapi.do)에서 "한국천문연구원_특일 정보" 활용 신청 → 마이페이지에서 **일반 인증키(Decoding)** 복사
+  2. 저장소 Settings → Secrets and variables → Actions → New repository secret: 이름 `DATA_GO_KR_KEY`, 값은 위 키
+  3. Actions 탭 → "공휴일 갱신" → Run workflow (처음 한 번). 이후 매달 1일 자동 실행
+  - 로컬에서 직접 받기: `DATA_GO_KR_KEY=<키> node scripts/fetch-holidays.js`
+  - 파일로 연 `index.html`에서는 브라우저 보안 때문에 공휴일 파일을 못 읽습니다. 배포된 주소나 로컬 서버에서 확인하세요.

@@ -100,6 +100,46 @@
       .filter(Boolean));
   }
 
+  // ---------- 공휴일 (data/holidays.json, GitHub Actions가 매달 갱신) ----------
+  const holidays = { list: [], updatedAt: null, status: 'loading' }; // status: loading | ok | empty | error
+
+  /* 그날의 공휴일 이름과, 공휴일에 쉬는 종류를 뺀 고정 일정 */
+  function dayContext(L) {
+    const name = C.holidayName(holidays.list, L.day);
+    const off = C.holidayOff(state.settings);
+    return { holiday: name, off, blocks: C.blocksForDay(state.blocks, !!name, off) };
+  }
+  /* 앵커 일정이 공휴일이라 쉬는 날이면 오늘은 앵커가 없는 날로 본다 */
+  function anchorFor(r, L, ctx) {
+    const a = C.anchorToday(r, state.blocks, L.weekday, L.shift);
+    if (ctx.holiday && a.type === 'block' && a.today && ctx.off.includes(a.block.kind)) {
+      return Object.assign({}, a, { today: false, holiday: true, plannedMin: null });
+    }
+    return a;
+  }
+  function loadHolidays() {
+    fetch('data/holidays.json', { cache: 'no-cache' })
+      .then((res) => { if (!res.ok) throw new Error('http'); return res.json(); })
+      .then((d) => {
+        if (!C.validHolidays(d)) throw new Error('shape');
+        holidays.list = d.holidays;
+        holidays.updatedAt = d.updatedAt || null;
+        holidays.status = d.holidays.length ? 'ok' : 'empty';
+      })
+      .catch(() => { holidays.status = 'error'; })
+      .then(() => { renderToday(); renderWeek(); renderHolidayInfo(); });
+  }
+  function renderHolidayInfo() {
+    const el = $('holidayInfo');
+    if (!el) return;
+    el.textContent = {
+      loading: '공휴일 정보를 불러오는 중이에요.',
+      ok: '공휴일 정보: 한국천문연구원 특일 정보 · ' + (holidays.updatedAt || '') + ' 갱신',
+      empty: '공휴일 정보가 아직 없어요. 배포 후 GitHub Actions가 처음 실행되면 채워져요.',
+      error: '공휴일 정보를 불러오지 못했어요. index.html을 파일로 열면 불러올 수 없고, 배포된 주소에서는 자동으로 반영돼요.'
+    }[holidays.status];
+  }
+
   /* 앱 안의 지금: 하루 끝이 자정을 넘기면 그 전까지는 전날로 본다 */
   function nowL() { return C.logical(new Date(), state.settings); }
   function shift() { return C.rolloverMin(state.settings); }
@@ -388,11 +428,11 @@
   }
 
   // ========== 오늘 ==========
-  function routineInfo(r, L, gaps) {
+  function routineInfo(r, L, gaps, ctx) {
     const now = new Date();
     const done = C.weekDone(state.records, r.id, now, L.shift);
     const doneToday = C.doneOn(state.records, r.id, L.day, L.shift);
-    const anchor = C.anchorToday(r, state.blocks, L.weekday, L.shift);
+    const anchor = anchorFor(r, L, ctx);
     const cal = C.calibration(state.records, { routineId: r.id, category: r.category });
     const predBase = C.predict(r.baseMin, cal);
     const predMin = C.predict(r.minMin, cal);
@@ -412,20 +452,24 @@
   function renderToday() {
     const box = $('todayDyn');
     const L = nowL();
+    const ctx = dayContext(L);
     const s = state.settings;
-    const gaps = C.computeGaps(state.blocks, L.weekday, s, L.nowMin);
-    const todays = C.dayBlocks(state.blocks, L.weekday);
+    const gaps = C.computeGaps(ctx.blocks, L.weekday, s, L.nowMin);
+    const todays = C.dayBlocks(ctx.blocks, L.weekday);
     const left = gaps.reduce((sum, g) => sum + g.remaining, 0);
-    const infos = state.routines.map((r) => routineInfo(r, L, gaps));
+    const infos = state.routines.map((r) => routineInfo(r, L, gaps, ctx));
+    const skipped = ctx.holiday ? C.dayBlocks(state.blocks, L.weekday).filter((b) => ctx.off.includes(b.kind)) : [];
     ui.lastMinute = L.nowMin;
 
     const nodes = [];
     nodes.push(h('div', { class: 'day-head' },
       h('h2', { id: 'todayH', tabindex: '-1' }, (L.day.getMonth() + 1) + '월 ' + L.day.getDate() + '일 ' + C.DAY_NAMES[L.weekday] + '요일' +
-        (L.nowMin >= 1440 ? ' 밤' : '')),
+        (L.nowMin >= 1440 ? ' 밤' : ''),
+        ctx.holiday ? h('span', { class: 'pill holiday' }, ctx.holiday) : null),
       h('p', { class: 'sub' }, state.blocks.length
         ? '오늘 고정 일정 ' + todays.length + '개 · 남은 빈 시간 ' + C.fmtDuration(left)
-        : '고정 일정을 넣으면 오늘의 빈 시간이 보여요.')));
+        : '고정 일정을 넣으면 오늘의 빈 시간이 보여요.'),
+      skipped.length ? h('p', { class: 'sub' }, '공휴일이라 ' + skipped.map((b) => q(b.name)).join(', ') + '은(는) 빼고 계산했어요. 바꾸려면 주간 틀 › 하루 설정에서 고르세요.') : null));
 
     const banner = reviewBanner();
     if (banner) nodes.push(banner);
@@ -564,7 +608,7 @@
   function ruleLine(r, anchor) {
     const p = h('p', { class: 'rule' }, anchorPhrase(r), h('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'),
       h('span', { class: 'sr-only' }, ' 그러면 '), r.name);
-    if (anchor && anchor.type === 'block' && !anchor.today) p.append(h('span', { class: 'sub' }, ' · 오늘은 ' + q(anchor.block.name) + '이(가) 없는 날'));
+    if (anchor && anchor.type === 'block' && !anchor.today) p.append(h('span', { class: 'sub' }, ' · 오늘은 ' + (anchor.holiday ? '공휴일이라 ' : '') + q(anchor.block.name) + '이(가) 없는 날'));
     if (anchor && anchor.type === 'block' && anchor.today) p.append(h('span', { class: 'sub num' }, ' · ' + anchor.block.end));
     return p;
   }
@@ -682,7 +726,7 @@
     if (state.active) { blockedByActive(); return; }
     const now = new Date();
     const L = nowL();
-    const anchor = C.anchorToday(r, state.blocks, L.weekday, L.shift);
+    const anchor = anchorFor(r, L, dayContext(L));
     let planned = null;
     if (anchor.today && anchor.plannedMin != null) {
       const p = C.atMinutes(L.day, anchor.plannedMin).toISOString();
@@ -724,7 +768,7 @@
       if (!C.checkMinutes($('tEstimate').value)) text += ' ' + est + '분으로 잡으면 실제로는 약 ' + C.round5(est * cal.ratio) + '분 걸릴 거예요.';
     }
     const L = nowL();
-    const cur = C.computeGaps(state.blocks, L.weekday, state.settings, L.nowMin).find((g) => g.state === 'now');
+    const cur = C.computeGaps(dayContext(L).blocks, L.weekday, state.settings, L.nowMin).find((g) => g.state === 'now');
     if (state.blocks.length && cur) text += ' 지금 빈 시간은 ' + C.fmtDuration(cur.remaining) + ' 남았어요.';
     $('tHint').textContent = text;
   }
@@ -1120,11 +1164,24 @@
       h('div', { class: 'wticks' }, ticks.map((t) => h('span', { style: 'left:' + pct(t) + '%' }, (Math.floor(t / 60) % 24) + '시'))));
     const kinds = KIND_ORDER.filter((k) => state.blocks.some((b) => (KIND_ORDER.includes(b.kind) ? b.kind : '기타') === k));
 
+    // 다가오는 공휴일 (앞으로 30일)
+    const L = nowL();
+    const soon = C.upcomingHolidays(holidays.list, L.day, 30);
+    const off = C.holidayOff(state.settings);
+    const holidayLine = holidays.status === 'ok' || holidays.status === 'empty'
+      ? h('p', { class: 'holiday-line' }, h('span', { class: 'pill holiday' }, '공휴일'), ' ',
+        soon.length
+          ? soon.map((x) => { const d = new Date(x.date + 'T00:00:00'); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + C.DAY_NAMES[d.getDay()] + ') ' + x.name; }).join(' · ') +
+            (off.length ? ' — 이날은 ' + off.join('·') + ' 일정을 빼고 계산해요.' : '')
+          : '앞으로 30일 안에 공휴일이 없어요.')
+      : null;
+
     return h('section', { class: 'card', 'aria-labelledby': 'weekOverviewH' },
       h('h3', { id: 'weekOverviewH' }, '요일별로 보기'),
       h('p', { class: 'sub' }, '막대에 마우스를 올리면 일정 이름이 보이고, 누르면 고칠 수 있어요.'),
       h('div', { class: 'week-chart' }, rows, scale),
-      h('div', { class: 'legend', 'aria-label': '색 구분' }, kinds.map((k) => h('span', { class: 'lg-k ' + kindClass(k) }, k))));
+      h('div', { class: 'legend', 'aria-label': '색 구분' }, kinds.map((k) => h('span', { class: 'lg-k ' + kindClass(k) }, k))),
+      holidayLine);
   }
 
   function deleteBlock(id) {
@@ -1213,6 +1270,8 @@
     $('sDayStart').value = state.settings.dayStart;
     $('sDayEnd').value = state.settings.dayEnd;
     $('sBuffer').value = String(state.settings.bufferMin);
+    const off = C.holidayOff(state.settings);
+    document.querySelectorAll('input[name="sHolidayOff"]').forEach((el) => { el.checked = off.includes(el.value); });
   }
 
   function bindSettingsForm() {
@@ -1225,7 +1284,10 @@
       const buf = $('sBuffer').value.trim();
       if (!/^\d+$/.test(buf) || Number(buf) > 30) errs.push(setErr('sBuffer', '0~30 사이의 분으로 적어 주세요'));
       if (focusFirst(errs)) return;
-      state.settings = { dayStart: $('sDayStart').value, dayEnd: $('sDayEnd').value, bufferMin: Number(buf) };
+      state.settings = {
+        dayStart: $('sDayStart').value, dayEnd: $('sDayEnd').value, bufferMin: Number(buf),
+        holidayOff: [...document.querySelectorAll('input[name="sHolidayOff"]:checked')].map((el) => el.value)
+      };
       const over = C.rolloverMin(state.settings) > 0;
       if (commit()) showStatus('info', '하루 설정을 저장했어요.', state.settings.dayStart + '–' + state.settings.dayEnd + (over ? '(다음 날)' : '') +
         ', 전환 시간 ' + state.settings.bufferMin + '분' + (over ? '. 자정부터 ' + state.settings.dayEnd + '까지 한 일은 전날로 쳐요.' : ''));
@@ -1619,6 +1681,8 @@
     const start = location.hash.slice(1);
     switchTab(TABS.includes(start) ? start : 'today');
     renderAll();
+    renderHolidayInfo();
+    loadHolidays();
     setInterval(minuteTicker, 10000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { renderActive(); minuteTicker(); } });
   }

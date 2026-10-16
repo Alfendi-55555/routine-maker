@@ -341,3 +341,38 @@ test('v2 4주 내내 채우면 사실만 알리고 횟수를 올리자고 하지
   const kinds = Calc.suggestions(rs, [r], now, 0).map((x) => x.kind);
   assert.deepEqual(kinds, ['steady']);
 });
+
+// ---------- 공휴일 ----------
+test('공휴일: 그날 이름, 쉬는 종류 빼기, 다가오는 공휴일', () => {
+  const list = [{ date: '2026-10-05', name: '대체공휴일' }, { date: '2026-10-09', name: '한글날' }];
+  assert.equal(Calc.holidayName(list, new Date(2026, 9, 9)), '한글날');
+  assert.equal(Calc.holidayName(list, new Date(2026, 9, 8)), null);
+  const blocks = [{ kind: '수업' }, { kind: '통학' }, { kind: '알바' }];
+  assert.deepEqual(Calc.blocksForDay(blocks, true, ['수업', '통학']).map((b) => b.kind), ['알바']);
+  assert.equal(Calc.blocksForDay(blocks, false, ['수업']).length, 3);
+  assert.deepEqual(Calc.holidayOff({}), ['수업', '통학']);
+  assert.deepEqual(Calc.holidayOff({ holidayOff: [] }), []);
+  assert.deepEqual(Calc.upcomingHolidays(list, new Date(2026, 9, 6), 30).map((h) => h.name), ['한글날']);
+  assert.equal(Calc.validHolidays({ holidays: list }), true);
+  assert.equal(Calc.validHolidays({ holidays: [{ date: '2026-1-1', name: 'x' }] }), false);
+  const d = Store.empty();
+  d.settings.holidayOff = ['수업'];
+  assert.equal(Store.validate(d), true);
+  d.settings.holidayOff = '수업';
+  assert.equal(Store.validate(d), false);
+});
+
+test('공휴일 API 응답 정리: 0건·1건·여러 건, 같은 날은 이름 합치기', () => {
+  const { normalize, merge } = require('../scripts/fetch-holidays.js');
+  const wrap = (items) => ({ response: { header: { resultCode: '00', resultMsg: 'NORMAL SERVICE.' }, body: { items } } });
+  assert.deepEqual(normalize(wrap('')), []);
+  assert.deepEqual(normalize(wrap({ item: { dateKind: '01', dateName: '한글날', isHoliday: 'Y', locdate: 20261009, seq: 1 } })),
+    [{ date: '2026-10-09', name: '한글날' }]);
+  const many = normalize(wrap({ item: [
+    { dateName: '어린이날', isHoliday: 'Y', locdate: 20250505 },
+    { dateName: '부처님오신날', isHoliday: 'Y', locdate: 20250505 },
+    { dateName: '평일 기념일', isHoliday: 'N', locdate: 20250506 }
+  ] }));
+  assert.deepEqual(merge(many), [{ date: '2025-05-05', name: '어린이날 · 부처님오신날' }]);
+  assert.throws(() => normalize({ response: { header: { resultCode: '30', resultMsg: 'SERVICE KEY IS NOT REGISTERED' } } }), /API 오류: 30/);
+});

@@ -12,7 +12,7 @@
   function empty() {
     return {
       version: 1,
-      settings: { dayStart: '08:00', dayEnd: '23:00', bufferMin: 10 },
+      settings: { dayStart: '08:00', dayEnd: '23:00', bufferMin: 10, holidayOff: ['수업', '통학'] },
       blocks: [],
       routines: [],
       active: null,
@@ -32,6 +32,8 @@
     if (!s || !TIME.test(s.dayStart) || !TIME.test(s.dayEnd)) return false;
     var a = minOf(s.dayStart), b = minOf(s.dayEnd);
     if (a === b || (b < a && (b > 240 || a < 240))) return false;
+    // 공휴일에 쉬는 고정 일정 종류 (없어도 됨)
+    if (s.holidayOff != null && !(Array.isArray(s.holidayOff) && s.holidayOff.every(function (k) { return typeof k === 'string'; }))) return false;
     return Number.isInteger(s.bufferMin) && s.bufferMin >= 0 && s.bufferMin <= 30;
   }
   function validBlock(b) {

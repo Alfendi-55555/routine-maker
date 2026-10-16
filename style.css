@@ -353,3 +353,8 @@ a.btn.ghost { color: var(--accent); }
 .dialog-head h2 { font-size: 1.02rem; }
 #editDialogBody { padding: 16px; }
 @media (prefers-reduced-motion: no-preference) { .seg::after { transition: opacity 0.12s; } }
+
+/* 공휴일 */
+.pill.holiday { color: var(--high); background: var(--high-bg); margin-left: 8px; vertical-align: 2px; }
+.holiday-line { font-size: 0.86rem; color: var(--muted); }
+.holiday-line .pill { margin-left: 0; }

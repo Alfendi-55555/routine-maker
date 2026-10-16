@@ -285,6 +285,16 @@
           </div>
           <p class="hint" id="sBufferHint">전환 시간은 고정 일정 앞뒤로 이동·준비에 쓰는 시간이에요. 빈 시간에서 빼고 계산해요 (0~30분).</p>
           <p class="hint">하루 끝은 새벽 2시처럼 자정을 넘겨도 돼요(새벽 4시까지). 그때까지 한 일은 전날 한 일로 쳐요.</p>
+          <fieldset class="choice" id="sHolidaySet">
+            <legend>공휴일에 쉬는 고정 일정</legend>
+            <div class="row">
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="수업"> 수업</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="통학"> 통학</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="알바"> 알바</label>
+              <label class="check"><input type="checkbox" name="sHolidayOff" value="기타"> 기타</label>
+            </div>
+            <p class="hint" id="holidayInfo"></p>
+          </fieldset>
           <div class="row"><button type="submit" class="btn">설정 저장</button></div>
         </form>
       </section>

@@ -85,6 +85,38 @@
     return null;
   }
 
+  // ---------- 공휴일 ----------
+  var DEFAULT_HOLIDAY_OFF = ['수업', '통학'];
+
+  /* 공휴일에 쉬는 고정 일정 종류 (설정이 없으면 수업·통학) */
+  function holidayOff(settings) { return Array.isArray(settings.holidayOff) ? settings.holidayOff : DEFAULT_HOLIDAY_OFF; }
+
+  /* holidays: [{ date: 'YYYY-MM-DD', name }] · day: 앱 안의 날짜 → 공휴일 이름 또는 null */
+  function holidayName(holidays, day) {
+    var key = dayKey(day);
+    for (var i = 0; i < holidays.length; i++) if (holidays[i].date === key) return holidays[i].name;
+    return null;
+  }
+
+  /* 그날 실제로 있는 고정 일정: 공휴일이면 쉬는 종류를 뺀다 */
+  function blocksForDay(blocks, isHoliday, offKinds) {
+    if (!isHoliday) return blocks;
+    return blocks.filter(function (b) { return offKinds.indexOf(b.kind) === -1; });
+  }
+
+  /* from(포함)부터 days일 안의 공휴일 */
+  function upcomingHolidays(holidays, from, days) {
+    var a = dayKey(from), b = dayKey(addDays(from, days));
+    return holidays.filter(function (h) { return h.date >= a && h.date < b; });
+  }
+
+  /* 공휴일 파일 모양 검사 */
+  function validHolidays(d) {
+    return !!d && Array.isArray(d.holidays) && d.holidays.every(function (h) {
+      return h && typeof h.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(h.date) && typeof h.name === 'string';
+    });
+  }
+
   // ---------- 고정 일정과 빈 시간 ----------
   function dayBlocks(blocks, weekday) {
     return blocks.filter(function (b) { return b.days.indexOf(weekday) !== -1; })
@@ -403,6 +435,8 @@
     minutesOfDay: minutesOfDay, atMinutes: atMinutes, diffMin: diffMin,
     MAX_ROLLOVER: MAX_ROLLOVER, dayEndMin: dayEndMin, rolloverMin: rolloverMin, logical: logical, logicalKey: logicalKey,
     checkSettings: checkSettings, suggestions: suggestions, looksTooLong: looksTooLong,
+    DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,
+    upcomingHolidays: upcomingHolidays, validHolidays: validHolidays,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,
     ratioOf: ratioOf, calibration: calibration, predict: predict, fit: fit, categoryStats: categoryStats,
     anchorToday: anchorToday, pickGap: pickGap,
