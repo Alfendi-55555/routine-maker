@@ -55,8 +55,9 @@ body {
   font-size: 15px;
   line-height: 1.6;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
-.wrap { max-width: 680px; margin: 0 auto; padding: 0 16px; padding-block: 24px 48px; display: grid; gap: 20px; }
+.wrap { max-width: 680px; margin: 0 auto; padding: 0 16px; padding-block: 20px 48px; display: grid; gap: 20px; }
 h1, h2, h3 { margin: 0; line-height: 1.35; text-wrap: balance; }
 h1 { font-size: 1.45rem; letter-spacing: -0.01em; }
 h2 { font-size: 1.1rem; }
@@ -160,10 +161,27 @@ legend { padding: 0 4px; }
 .confirm p { font-size: 0.92rem; }
 .card .confirm, .item .confirm { background: var(--high-bg); border: 0; border-radius: 8px; padding: 12px; }
 
-/* 탭 */
-.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px; position: sticky; top: 0; z-index: 5; }
-.tabs [role="tab"] { border: 0; background: transparent; border-radius: 7px; padding: 8px 4px; font-weight: 600; font-size: 0.9rem; cursor: pointer; color: var(--muted); min-height: 40px; }
-.tabs [role="tab"][aria-selected="true"] { background: var(--ink); color: var(--bg); }
+/* 상단 바: 앱 이름 + 탭 */
+.topbar { position: sticky; top: 0; z-index: 10; background: var(--surface); border-bottom: 1px solid var(--line); }
+.topbar-inner { max-width: 680px; margin: 0 auto; padding: 0 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 16px; }
+.brand-row { display: flex; align-items: baseline; gap: 10px; padding-block: 12px; }
+.brand { font-size: 1.05rem; letter-spacing: -0.01em; }
+.about { font-size: 0.82rem; color: var(--muted); }
+.about:hover { color: var(--accent); }
+.tabs { display: flex; gap: 2px; align-self: stretch; }
+.tabs [role="tab"] {
+  border: 0; background: transparent; cursor: pointer;
+  padding: 0 12px; min-height: 48px;
+  font-weight: 600; font-size: 0.95rem; color: var(--muted);
+  border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+.tabs [role="tab"]:hover { color: var(--ink); }
+.tabs [role="tab"][aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+@media (max-width: 520px) {
+  .brand-row { padding-block: 10px 0; }
+  .tabs { flex-basis: 100%; }
+  .tabs [role="tab"] { flex: 1; padding: 0 4px; }
+}
 main { display: grid; gap: 20px; }
 #todayDyn, #routinesDyn, #weekDyn, #reviewDyn { display: grid; gap: 16px; min-width: 0; }
 [role="tabpanel"] { display: grid; gap: 20px; }
@@ -262,3 +280,23 @@ li.suggest { display: grid; gap: 8px; }
 .wb-num { font-size: 0.72rem; color: var(--muted); line-height: 1; }
 .rec-del { display: inline-flex; gap: 2px; }
 .rec .panel { grid-column: 1 / -1; }
+
+/* 링크 모양 버튼, 건너뛰기 링크는 상단 바 위로 */
+a.btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
+a.btn.primary { color: var(--accent-ink); }
+a.btn.ghost { color: var(--accent); }
+.about { text-decoration: none; }
+.skip { z-index: 20; }
+
+/* 소개 페이지 */
+.intro { gap: 32px; }
+.hero { display: grid; gap: 14px; padding-block: 16px 8px; }
+.hero h1 { font-size: clamp(1.6rem, 6vw, 2.2rem); line-height: 1.3; letter-spacing: -0.02em; }
+.lead { font-size: 1.02rem; color: var(--muted); max-width: 34em; }
+.intro-sec { display: grid; gap: 12px; padding-top: 24px; border-top: 1px solid var(--line); }
+.ticks, .steps { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+.steps li::marker { font-weight: 700; color: var(--accent); }
+.principles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.principles > div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 6px; }
+.principles p { color: var(--muted); font-size: 0.92rem; }
+@media (max-width: 520px) { .principles { grid-template-columns: 1fr; } }

@@ -14,13 +14,24 @@
 </head>
 <body>
 <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+<!-- 상단 바: 앱 이름 + 탭. 스크롤해도 위에 붙어 있다 -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand-row">
+      <h1 class="brand">루틴메이커</h1>
+      <a class="about" href="intro.html">앱 소개</a>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="화면">
+      <button type="button" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true">오늘</button>
+      <button type="button" role="tab" id="tab-routines" aria-controls="panel-routines" aria-selected="false" tabindex="-1">루틴</button>
+      <button type="button" role="tab" id="tab-week" aria-controls="panel-week" aria-selected="false" tabindex="-1">주간 틀</button>
+      <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" tabindex="-1">돌아보기</button>
+    </nav>
+  </div>
+</header>
+
 <div class="wrap">
-
-  <header class="masthead">
-    <h1>루틴메이커</h1>
-    <p class="tagline">의지 대신 기록으로, 지킬 수 있는 루틴을 만들어요.</p>
-  </header>
-
   <div id="status" class="status info" role="status" aria-live="polite"><strong>기록을 불러오는 중이에요</strong></div>
 
   <!-- 진행 중인 일: 어느 탭에서나 보인다 -->
@@ -62,13 +73,6 @@
     </div>
   </section>
 
-  <nav class="tabs" role="tablist" aria-label="화면">
-    <button type="button" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true">오늘</button>
-    <button type="button" role="tab" id="tab-routines" aria-controls="panel-routines" aria-selected="false" tabindex="-1">루틴</button>
-    <button type="button" role="tab" id="tab-week" aria-controls="panel-week" aria-selected="false" tabindex="-1">주간 틀</button>
-    <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" tabindex="-1">돌아보기</button>
-  </nav>
-
   <main id="main">
 
     <!-- 오늘 -->
@@ -77,7 +81,7 @@
 
       <section class="card" aria-labelledby="taskH">
         <h2 id="taskH">한 번만 하는 일</h2>
-        <p class="sub">과제나 발표 준비처럼 반복하지 않는 일도 재 두면, 카테고리마다 내가 시간을 얼마나 짧게 잡는지 보여요.</p>
+        <p class="sub">과제·발표 준비처럼 반복하지 않는 일을 재요.</p>
         <form id="taskForm" novalidate>
           <div class="field">
             <label for="tName">할 일 이름</label>
@@ -322,10 +326,6 @@
   </main>
 
   <datalist id="categoryList"></datalist>
-
-  <footer class="foot">
-    <p>루틴메이커 · 기록은 이 브라우저(localStorage)에만 저장돼요. 로그인도, 서버 전송도 없어요.</p>
-  </footer>
 </div>
 <noscript><p class="noscript">이 앱은 자바스크립트가 켜져 있어야 동작해요.</p></noscript>
 </body>

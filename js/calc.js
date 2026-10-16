@@ -22,7 +22,8 @@
     if (h > 23 || m > 59) return NaN;
     return h * 60 + m;
   }
-  function fmtHM(min) { return pad(Math.floor(min / 60)) + ':' + pad(min % 60); }
+  /* 자정을 넘긴 분(예: 1500)도 시계 시각(01:00)으로 */
+  function fmtHM(min) { return pad(Math.floor(min / 60) % 24) + ':' + pad(min % 60); }
   function fmtDuration(min) {
     min = Math.round(min);
     if (min < 60) return min + '분';

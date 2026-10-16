@@ -426,12 +426,14 @@
 
     const banner = reviewBanner();
     if (banner) nodes.push(banner);
-    if (!state.active) nodes.push(nowCard(L, gaps, todays, infos));
+    if (!state.active && (state.blocks.length || state.routines.length)) nodes.push(nowCard(L, gaps, todays, infos));
 
     if (!state.blocks.length) {
       nodes.push(emptyBox('아직 고정 일정이 없어요.',
         '수업·통학·알바처럼 매주 같은 시간에 하는 일부터 넣어 보세요. 그걸 빼고 남는 시간이 빈 시간이 돼요.',
-        h('button', { type: 'button', class: 'btn primary', onclick: () => switchTab('week', 'bName') }, '주간 틀에 고정 일정 넣기')));
+        h('div', { class: 'row' },
+          h('button', { type: 'button', class: 'btn primary', onclick: () => switchTab('week', 'bName') }, '주간 틀에 고정 일정 넣기'),
+          hasAnyData() ? null : h('a', { class: 'btn ghost', href: 'intro.html' }, '처음이라면 앱 소개 보기'))));
     } else {
       nodes.push(dayCard(todays, gaps, L.nowMin));
     }
@@ -530,8 +532,7 @@
   function todayRoutines(infos) {
     const sec = h('section', { class: 'section', 'aria-labelledby': 'todayRoutinesH' },
       h('div', { class: 'section-head' },
-        h('h3', { id: 'todayRoutinesH' }, '오늘 할 루틴'),
-        h('span', { class: 'sub' }, '목표는 하나, 정한 횟수만큼 하기')));
+        h('h3', { id: 'todayRoutinesH' }, '오늘 할 루틴')));
     if (!state.routines.length) {
       sec.append(emptyBox('루틴이 없어요.',
         '주 1회처럼 작게 하나 만들어 보세요. 시작 신호(앵커)와 바쁜 날용 최소 버전을 함께 정해요.',
@@ -800,9 +801,7 @@
 
   function renderRoutines() {
     const box = $('routinesDyn');
-    const nodes = [h('div', { class: 'day-head' },
-      h('h2', null, '내 루틴'),
-      h('p', { class: 'sub' }, '목표는 정한 횟수만큼 하는 것 하나예요. 걸린 시간은 기록만 하고 판단하지 않아요.'))];
+    const nodes = [h('h2', { class: 'sr-only' }, '내 루틴')];
     if (!state.routines.length) {
       nodes.push(emptyBox('아직 루틴이 없어요.', '아래에서 주 1회처럼 작게 하나 만들어 보세요. 한 번에 한두 개로 시작하는 편이 오래가요.'));
     } else {
@@ -1021,9 +1020,8 @@
   // ========== 주간 틀 ==========
   function renderWeek() {
     const box = $('weekDyn');
-    const nodes = [h('div', { class: 'day-head' },
-      h('h2', null, '주간 틀'),
-      h('p', { class: 'sub' }, '매주 같은 요일·시간에 반복되는 일정이에요. 이걸 빼고 남는 시간이 빈 시간이 돼요.'))];
+    const nodes = [h('h2', { class: 'sr-only' }, '주간 틀'),
+      h('p', { class: 'sub' }, '매주 반복되는 고정 일정이에요. 이걸 빼고 남는 시간이 빈 시간이 돼요.')];
     if (!state.blocks.length) {
       nodes.push(emptyBox('아직 고정 일정이 없어요.', '수업, 통학, 알바처럼 내가 옮길 수 없는 일정을 아래에서 넣어 보세요.'));
       box.replaceChildren(...nodes);
@@ -1174,9 +1172,7 @@
   // ========== 돌아보기 ==========
   function renderReview() {
     const box = $('reviewDyn');
-    const nodes = [h('div', { class: 'day-head' },
-      h('h2', { tabindex: '-1' }, '돌아보기'),
-      h('p', { class: 'sub' }, '목표는 행동, 시간은 거울이에요. 숫자는 잘잘못을 따지려는 게 아니라 다음 계획에 쓰려고 보여 드려요.'))];
+    const nodes = [h('h2', { class: 'sr-only', tabindex: '-1' }, '돌아보기')];
     if (!state.records.length) {
       nodes.push(emptyBox('아직 기록이 없어요.', '오늘 탭에서 루틴이나 한 번만 하는 일을 시작해 보세요. 끝내면 여기에 쌓여요.',
         h('button', { type: 'button', class: 'btn', onclick: () => switchTab('today', 'todayH') }, '오늘 탭으로')));
@@ -1230,7 +1226,7 @@
     if (!list.length) return null;
     return h('section', { class: 'card', 'aria-labelledby': 'suggestH' },
       h('h3', { id: 'suggestH', tabindex: '-1' }, '규칙 다듬기 제안'),
-      h('p', { class: 'sub' }, '기록에 근거한 제안이에요. 반영하거나 이번 주는 넘어갈 수 있어요. 횟수를 늘리자는 제안은 하지 않아요.'),
+      h('p', { class: 'sub' }, '기록에 근거한 제안이에요. 반영하거나 이번 주는 넘어갈 수 있어요.'),
       h('ul', { class: 'plain' }, list.map((s) => {
         const r = findRoutine(s.routineId);
         let text, apply = null;
