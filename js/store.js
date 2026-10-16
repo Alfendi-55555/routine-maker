@@ -53,6 +53,9 @@
     if (a.type === 'dayoff') return true;
     return false;
   }
+  function validDays(days) {
+    return Array.isArray(days) && days.length > 0 && days.every(function (d) { return Number.isInteger(d) && d >= 0 && d <= 6; });
+  }
   function isSituationAnchor(a) { return !!a && (a.type === 'block' || a.type === 'routine' || a.type === 'situation' || a.type === 'dayoff'); }
   function validEvent(ev) { return !!ev && isStr(ev.id) && isStr(ev.label, 20) && isDate(ev.at); }
   function validMeasure(m) {
@@ -63,8 +66,9 @@
   }
   function validRoutine(r) {
     return !!r && isStr(r.id) && isStr(r.name, 50) && isStr(r.category, 20) &&
-      // 상황 루틴은 "상황이 올 때마다"라 perWeek가 없어도 된다
-      ((r.perWeek == null && isSituationAnchor(r.anchor)) || (Number.isInteger(r.perWeek) && r.perWeek >= 1 && r.perWeek <= 7)) &&
+      // 얼마나 자주: 상황 루틴은 "상황이 올 때마다"(perWeek 없음), 그 밖에는 요일(days) 또는 주 몇 번(perWeek)
+      ((r.perWeek == null && isSituationAnchor(r.anchor)) || validDays(r.days) || (Number.isInteger(r.perWeek) && r.perWeek >= 1 && r.perWeek <= 7)) &&
+      (r.days == null || validDays(r.days)) &&
       isPos(r.baseMin, 720) && isPos(r.minMin, 720) && r.minMin < r.baseMin &&
       validAnchor(r.anchor) && validMeasure(r.measure) && isDate(r.createdAt);
   }

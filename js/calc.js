@@ -262,7 +262,8 @@
       var ws = addDays(thisWeek, -7 * i), we = addDays(ws, 7);
       if (created >= we.getTime()) { out.push({ weekStart: ws, count: 0, state: 'none' }); continue; }
       var c = daysDone(records, routine.id, ws, we, shift);
-      out.push({ weekStart: ws, count: c, state: c >= routine.perWeek ? 'done' : 'miss' });
+      var target = routine.perWeek || (Array.isArray(routine.days) && routine.days.length) || 7;
+      out.push({ weekStart: ws, count: c, state: c >= target ? 'done' : 'miss' });
     }
     return out;
   }
@@ -383,6 +384,74 @@
     if (!t) return '상황 이름을 적어 주세요 (예: 집 도착)';
     if (t.length > 20) return '상황 이름은 20자 이내로 적어 주세요';
     return '';
+  }
+
+  // ---------- 얼마나 자주와 연속 기록 ----------
+  /* 시각·아무 때나 루틴은 요일을 정하거나(days) 주 몇 번만 정한다(weekly). 상황 루틴은 상황이 올 때마다(situation). */
+  function scheduleOf(r) {
+    if (isSituation(r)) return 'situation';
+    return Array.isArray(r.days) && r.days.length ? 'days' : 'weekly';
+  }
+  function streakUnit(r) { return { days: '일', weekly: '주', situation: '번' }[scheduleOf(r)]; }
+
+  /* 기회마다 결과: hit(지킴) | miss(놓침). 아직 끝나지 않은 오늘(이번 주)은 pending.
+   * 오래된 것부터. 루틴을 만들기 전은 세지 않는다. */
+  function opportunities(r, env) {
+    var shift = env.shift || 0, sched = scheduleOf(r);
+    var today = startOfDay(shifted(env.now, shift));
+    var made = startOfDay(shifted(r.createdAt, shift));
+    var done = doneDays(env.records, r.id, made, addDays(today, 1), shift);
+    var out = [], d, k;
+    if (sched === 'days') {
+      for (d = new Date(made); d.getTime() <= today.getTime(); d = addDays(d, 1)) {
+        if (r.days.indexOf(d.getDay()) === -1) continue;
+        k = dayKey(d);
+        out.push({ key: k, result: done[k] ? 'hit' : (k === dayKey(today) ? 'pending' : 'miss') });
+      }
+    } else if (sched === 'weekly') {
+      var thisWeek = startOfWeek(today);
+      for (d = startOfWeek(made); d.getTime() <= thisWeek.getTime(); d = addDays(d, 7)) {
+        var c = Object.keys(done).filter(function (x) { var t = Date.parse(x + 'T00:00:00'); return t >= d.getTime() && t < addDays(d, 7).getTime(); }).length;
+        var cur = d.getTime() === thisWeek.getTime();
+        var first = d.getTime() === startOfWeek(made).getTime() && made.getTime() > d.getTime();
+        if (c >= r.perWeek) out.push({ key: dayKey(d), result: 'hit' });
+        else if (cur) out.push({ key: dayKey(d), result: 'pending' });
+        else if (!first) out.push({ key: dayKey(d), result: 'miss' }); // 중간에 만든 첫 주는 못 채워도 놓친 걸로 치지 않는다
+      }
+    } else {
+      var occ = occurrenceDays(r, env, made, addDays(today, 1));
+      Object.keys(occ).sort().forEach(function (x) {
+        out.push({ key: x, result: done[x] ? 'hit' : (x === dayKey(today) ? 'pending' : 'miss') });
+      });
+    }
+    return out;
+  }
+
+  /* 연속 기록 (한 번은 봐주기): 한 번 놓쳐도 이어지고, 두 번 연속 놓치면 처음부터.
+   * current·best: 봐준 것 포함 연속 / perfect·perfectBest: 봐주기 없는 완벽 연속
+   * forgiven: 봐준 기회(날짜 또는 주 시작일) — 화면에는 쓰지 않고 업적용으로 남긴다
+   * atRisk: 직전 기회를 놓쳐서, 지금 기회(오늘·이번 주)까지 놓치면 끊기는 상태 */
+  function streak(r, env) {
+    var list = opportunities(r, env);
+    var current = 0, best = 0, perfect = 0, perfectBest = 0, lastMiss = false, forgiven = [], runForgiven = [];
+    list.forEach(function (o) {
+      if (o.result === 'pending') return;
+      if (o.result === 'hit') {
+        current += 1; perfect += 1; lastMiss = false;
+      } else if (lastMiss) {
+        current = 0; perfect = 0; runForgiven = []; // 두 번 연속 놓침: 끊김
+      } else {
+        lastMiss = true; perfect = 0;
+        if (current > 0) { forgiven.push(o.key); runForgiven.push(o.key); }
+      }
+      if (current > best) best = current;
+      if (perfect > perfectBest) perfectBest = perfect;
+    });
+    var pending = list.length && list[list.length - 1].result === 'pending';
+    return {
+      unit: streakUnit(r), current: current, best: best, perfect: perfect, perfectBest: perfectBest,
+      forgiven: forgiven, forgivenInRun: runForgiven, atRisk: lastMiss && current > 0 && !!pending, pending: !!pending
+    };
   }
 
   // ---------- 규칙 다듬기 제안 ----------
@@ -540,6 +609,7 @@
     SITUATION_TYPES: SITUATION_TYPES, routineKind: routineKind, isSituation: isSituation, occurrenceDays: occurrenceDays,
     situationProgress: situationProgress, situationWeek: situationWeek, situationWeeks: situationWeeks,
     situationMissedYesterday: situationMissedYesterday, situationToday: situationToday, checkSituationLabel: checkSituationLabel,
+    scheduleOf: scheduleOf, streakUnit: streakUnit, opportunities: opportunities, streak: streak,
     DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,
     upcomingHolidays: upcomingHolidays, validHolidays: validHolidays,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,

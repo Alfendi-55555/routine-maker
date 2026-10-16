@@ -62,7 +62,22 @@
   const KIND_NAMES = { time: '시각 루틴', situation: '상황 루틴', anytime: '아무 때나 루틴' };
   function kindName(r) { return KIND_NAMES[C.routineKind(r)]; }
   /* 얼마나 자주: 상황 루틴은 늘 "상황이 올 때마다" */
-  function goalText(r) { return C.isSituation(r) ? '상황이 올 때마다' : perWeekText(r.perWeek); }
+  function daysGoal(days) {
+    const set = new Set(days);
+    if (set.size === 7) return '매일';
+    if (set.size === 5 && [1, 2, 3, 4, 5].every((d) => set.has(d))) return '평일';
+    if (set.size === 2 && set.has(0) && set.has(6)) return '주말';
+    return daysText(days);
+  }
+  function goalText(r) {
+    const sc = C.scheduleOf(r);
+    if (sc === 'situation') return '상황이 올 때마다';
+    if (sc === 'days') return daysGoal(r.days);
+    return perWeekText(r.perWeek) + ' (요일 자유)';
+  }
+  /* 이번 주에 해야 할 날 수: 요일 루틴은 이번 주의 그 요일 수, 주 N회 루틴은 N */
+  function weekTarget(r) { return C.scheduleOf(r) === 'days' ? r.days.length : r.perWeek; }
+  function streakText(st) { return st.current > 0 ? '연속 ' + st.current + st.unit : ''; }
   function sitWeekText(occ, hit) { return occ ? '이번 주 상황 ' + occ + '번 중 ' + hit + '번' : '이번 주는 아직 상황이 없어요'; }
   function dateText(iso) {
     const d = new Date(iso);
@@ -320,7 +335,7 @@
     const id = ids.find(Boolean);
     if (!id) return false;
     const el = $(id);
-    const target = el.tagName === 'FIELDSET' ? el.querySelector('input') : el;
+    const target = el.matches('input, select, textarea, button') ? el : el.querySelector('input, select, textarea');
     if (target) target.focus();
     return true;
   }
@@ -517,7 +532,12 @@
       bits.push(sitWeekText(wk.occ, wk.hit));
     } else if (routine) {
       const done = C.weekDone(state.records, routine.id, new Date(), shift());
-      bits.push(done >= routine.perWeek ? '이번 주 ' + perWeekText(routine.perWeek) + ' 채웠어요 (' + done + '일)' : '이번 주 ' + done + '/' + routine.perWeek);
+      const target = weekTarget(routine);
+      bits.push(done >= target ? '이번 주 목표를 채웠어요 (' + done + '일)' : '이번 주 ' + done + '/' + target);
+    }
+    if (routine) {
+      const st = C.streak(routine, sitEnv());
+      if (st.current > 0) bits.push('연속 ' + st.current + st.unit);
     }
     if (rec.amount && routine && routine.measure.type === 'count') bits.push('1' + routine.measure.unit + '당 ' + C.round1(rec.actualMin / rec.amount) + '분');
     if (!routine || routine.measure.type === 'none') bits.push('예상 ' + rec.estimateMin + '분 → 실제 ' + rec.actualMin + '분 (' + ratioText(rec.actualMin / rec.estimateMin) + ')');
@@ -577,8 +597,11 @@
     // 시작 신호가 이미 지났으면 몇 분 지났는지 (시작 지연이 지금 흐르는 중)
     const since = anchor.today && anchor.plannedMin != null && anchor.plannedMin <= L.nowMin && L.nowMin - anchor.plannedMin <= C.MAX_DELAY
       ? L.nowMin - anchor.plannedMin : null;
+    const st = C.streak(r, sitEnv(now));
     const base = {
-      r, doneToday, anchor, cal, predBase, predMin, pick, since,
+      r, doneToday, anchor, cal, predBase, predMin, pick, since, streak: st,
+      // 직전 기회를 놓쳐서 지금 기회까지 놓치면 연속이 끊기는 상태 (놓쳤다는 말 대신 "이어져요"로 안내)
+      missed: st.atRisk,
       fit: pick ? C.fit(predBase, predMin, pick.avail) : 'nogap'
     };
     if (C.isSituation(r)) {
@@ -586,16 +609,15 @@
       const env = sitEnv(now);
       const wk = C.situationWeek(r, env);
       return Object.assign(base, {
-        situation: true, done: wk.hit, target: wk.occ,
-        missed: C.situationMissedYesterday(r, env), tight: null,
+        situation: true, done: wk.hit, target: wk.occ, tight: null,
         todo: !!anchor.today && !doneToday
       });
     }
     return Object.assign(base, {
-      situation: false, done, target: r.perWeek,
-      missed: C.missedYesterday(state.records, r, now, L.shift),
-      tight: C.weekTight(r, done, doneToday, now, L.shift),
-      todo: !doneToday && done < r.perWeek
+      situation: false, done, target: weekTarget(r),
+      tight: C.scheduleOf(r) === 'weekly' ? C.weekTight(r, done, doneToday, now, L.shift) : null,
+      // 요일 루틴: 오늘이 그 요일이고 아직 안 했으면 / 주 N회: 이번 주 횟수를 아직 못 채웠으면
+      todo: !doneToday && (C.scheduleOf(r) === 'days' ? r.days.includes(L.weekday) : done < r.perWeek)
     });
   }
   function weekText(info) {
@@ -733,7 +755,7 @@
         h('div', { class: 'now-main' },
           h('span', { class: 'now-name' }, r.name),
           h('span', { class: 'now-meta' }, '약 ' + (version === 'base' ? pick.predBase : pick.predMin) + '분' +
-            (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.missed ? ' · 어제 못 했어요' : ''))),
+            (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.missed ? ' · 하면 ' + streakText(pick.streak) + '이 이어져요' : ''))),
         h('button', { type: 'button', class: 'btn primary start-btn', onclick: () => onStartRoutine(r, version) },
           version === 'base' ? '시작' : '최소 버전 시작')),
       h('div', { class: 'now-foot' },
@@ -859,7 +881,7 @@
     const r = info.r;
     const open = ui.more === r.id || (ui.panel && ui.panel.routineId === r.id);
     const notes = [];
-    if (info.missed) notes.push('어제 못 했어요 · 최소 버전도 괜찮아요');
+    if (info.missed) notes.push((C.scheduleOf(r) === 'weekly' ? '이번 주에 채우면 ' : '오늘 하면 ') + streakText(info.streak) + '이 이어져요 · 최소 버전도 괜찮아요');
     if (info.tight) notes.push('이번 주 ' + info.tight.left + '번 남았는데 ' + info.tight.daysLeft + '일 남았어요');
     if (info.since != null) notes.push(sinceText(info));
     const li = h('li', { class: 'rrow' + (info.missed || info.tight ? ' flagged' : ''), id: 'ti-' + r.id },
@@ -867,7 +889,7 @@
         h('span', { class: 'dot routine-soft', 'aria-hidden': 'true' }),
         h('div', { class: 'rrow-main' },
           h('h4', { class: 'rrow-name' }, r.name),
-          h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 약 ' + info.predBase + '분 · ' + weekText(info)),
+          h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 약 ' + info.predBase + '분 · ' + weekText(info) + (info.streak.current ? ' · ' + streakText(info.streak) : '')),
           notes.length ? h('span', { class: 'rrow-note' }, notes.join(' · ')) : null),
         h('span', { class: 'fit-word ' + info.fit }, FIT_SHORT[info.fit]),
         h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r, 'base'), 'aria-label': q(r.name) + ' 시작' }, '시작'),
@@ -1091,11 +1113,12 @@
     const counted = weeks.filter((w) => w.state !== 'none');
     if (!counted.length) return h('span', { class: 'sub' }, '루틴을 만든 지 아직 한 주가 안 됐어요.');
     const avg = counted.reduce((s, w) => s + w.count, 0) / counted.length;
-    const label = '지난 ' + counted.length + '주 평균 주 ' + C.round1(avg) + '일 (목표 ' + perWeekText(r.perWeek) + ', 주별 ' +
+    const target = weekTarget(r);
+    const label = '지난 ' + counted.length + '주 평균 주 ' + C.round1(avg) + '일 (목표 ' + goalText(r) + ', 주별 ' +
       counted.map((w) => w.count).join('·') + '일)';
     return h('span', { class: 'weekbars-wrap' },
       h('span', { class: 'weekbars', 'aria-hidden': 'true' }, weeks.map((w) => h('span', { class: 'wb ' + w.state },
-        h('span', { class: 'wb-track' }, h('span', { class: 'wb-fill', style: 'height:' + Math.min(100, w.count / r.perWeek * 100) + '%' })),
+        h('span', { class: 'wb-track' }, h('span', { class: 'wb-fill', style: 'height:' + Math.min(100, w.count / target * 100) + '%' })),
         h('span', { class: 'wb-num num' }, w.state === 'none' ? '–' : String(w.count))))),
       h('span', { class: 'sub' }, label));
   }
@@ -1131,10 +1154,11 @@
             h('p', null, goalText(r) + ' · 기본 ' + r.baseMin + '분 / 최소 ' + r.minMin + '분 · ' + measureText(r.measure)),
             h('p', null, C.isSituation(r)
               ? (() => { const wk = C.situationWeek(r, sitEnv(now)); return sitWeekText(wk.occ, wk.hit); })()
-              : '이번 주 ' + C.weekDone(state.records, r.id, now, shift()) + '/' + r.perWeek),
+              : '이번 주 ' + C.weekDone(state.records, r.id, now, shift()) + '/' + weekTarget(r),
+              (() => { const st = C.streak(r, sitEnv(now)); return st.current ? ' · ' + streakText(st) : ''; })()),
             weeksDots(r),
             r.anchor && r.anchor.type === 'block' && findBlock(r.anchor.blockId)
-              ? h('p', null, '앵커 요일: ' + daysText(findBlock(r.anchor.blockId).days)) : null),
+              ? h('p', null, '시작 신호 요일: ' + daysText(findBlock(r.anchor.blockId).days)) : null),
           h('div', { class: 'row' },
             h('button', { type: 'button', class: 'btn small', onclick: () => editRoutine(r.id), 'aria-label': q(r.name) + ' 고치기' }, '고치기'),
             h('button', { type: 'button', class: 'btn small danger', onclick: () => askDelete('r:' + r.id), 'aria-label': q(r.name) + ' 지우기' }, '지우기')));
@@ -1187,12 +1211,14 @@
     $('routineFormH').focus();
   }
 
+  function setRoutineDays(days) { document.querySelectorAll('input[name="rDay"]').forEach((el) => { el.checked = days.includes(Number(el.value)); }); }
+  function checkedRoutineDays() { return [...document.querySelectorAll('input[name="rDay"]:checked')].map((el) => Number(el.value)).sort(); }
+
   function selectedRadio(name) { const el = document.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : null; }
   function setRadio(name, value) { document.querySelectorAll('input[name="' + name + '"]').forEach((el) => { el.checked = el.value === value; }); }
 
   const SITUATION_ANCHORS = ['block', 'routine', 'dayoff', 'situation'];
   function toggleRoutineFields() {
-    $('rPerWeekHint').hidden = $('rPerWeek').value !== '7';
     const a = selectedRadio('rAnchor');
     $('rAnchorBlockField').hidden = a !== 'block';
     $('rAnchorTimeField').hidden = a !== 'time';
@@ -1202,6 +1228,9 @@
     const each = SITUATION_ANCHORS.includes(a);
     $('rPerWeekField').hidden = each;
     $('rEachField').hidden = !each;
+    const freq = selectedRadio('rFreq');
+    $('rDaysField').hidden = freq !== 'days';
+    $('rWeeklyField').hidden = freq !== 'weekly';
     const m = selectedRadio('rMeasure');
     $('rFixedField').hidden = m !== 'fixed';
     $('rCountField').hidden = m !== 'count';
@@ -1246,6 +1275,8 @@
     $('rName').value = '';
     $('rCategory').value = '공부';
     $('rPerWeek').value = '3';
+    setRadio('rFreq', 'days');
+    setRoutineDays([0, 1, 2, 3, 4, 5, 6]);
     $('rBase').value = '';
     $('rMin').value = '';
     setRadio('rAnchor', state.blocks.length ? 'block' : 'none');
@@ -1270,7 +1301,9 @@
     syncAnchorRoutines();
     $('rName').value = r.name;
     $('rCategory').value = r.category;
-    $('rPerWeek').value = String(r.perWeek || 3);
+    $('rPerWeek').value = String(r.perWeek && r.perWeek < 7 ? r.perWeek : 3);
+    if (C.scheduleOf(r) === 'weekly') setRadio('rFreq', 'weekly');
+    else { setRadio('rFreq', 'days'); setRoutineDays(r.days || [0, 1, 2, 3, 4, 5, 6]); }
     $('rBase').value = String(r.baseMin);
     $('rMin').value = String(r.minMin);
     const a = r.anchor;
@@ -1344,6 +1377,12 @@
   function bindRoutineForm() {
     document.querySelectorAll('input[name="rAnchor"], input[name="rMeasure"]').forEach((el) => el.addEventListener('change', toggleRoutineFields));
     $('rPerWeek').addEventListener('change', toggleRoutineFields);
+    document.querySelectorAll('input[name="rFreq"]').forEach((el) => el.addEventListener('change', toggleRoutineFields));
+    document.querySelectorAll('.quick-days [data-days]').forEach((b) => b.addEventListener('click', () => {
+      setRoutineDays(b.dataset.days.split(',').map(Number));
+      setErr('rDaysField', '', 'rDaysErr');
+    }));
+    document.querySelectorAll('input[name="rDay"]').forEach((el) => el.addEventListener('change', () => setErr('rDaysField', '', 'rDaysErr')));
     $('rCancel').addEventListener('click', () => { if (dialog) closeEditDialog(); else resetRoutineForm(); });
     ['rName', 'rCategory', 'rBase', 'rMin', 'rFixedAmount', 'rFixedUnit', 'rCountUnit', 'rAnchorTime', 'rAnchorBlock', 'rAnchorRoutine', 'rAnchorSituation'].forEach((id) =>
       $(id).addEventListener('input', () => { if ($(id).getAttribute('aria-invalid')) setErr(id, '', id.startsWith('rAnchor') ? 'rAnchorErr' : null); }));
@@ -1382,6 +1421,12 @@
         anchor = { type: 'dayoff' };
       }
 
+      // 얼마나 자주: 상황 루틴은 상황이 올 때마다, 그 밖에는 요일 또는 주 몇 번
+      const isSit = SITUATION_ANCHORS.includes(anchorType);
+      const freqDays = !isSit && selectedRadio('rFreq') === 'days';
+      const freqWeekly = !isSit && selectedRadio('rFreq') === 'weekly';
+      if (freqDays && !checkedRoutineDays().length) errs.push(setErr('rDaysField', '요일을 하나 이상 골라 주세요', 'rDaysErr'));
+
       const measureType = selectedRadio('rMeasure');
       let measure = { type: 'none' };
       if (measureType === 'fixed') {
@@ -1397,7 +1442,8 @@
       const data = {
         name: $('rName').value.trim(),
         category: $('rCategory').value.trim() || '기타',
-        perWeek: SITUATION_ANCHORS.includes(anchorType) ? null : Number($('rPerWeek').value),
+        perWeek: freqWeekly ? Number($('rPerWeek').value) : null,
+        days: freqDays ? checkedRoutineDays() : null,
         baseMin: Number($('rBase').value),
         minMin: Number($('rMin').value),
         anchor, measure
@@ -1945,13 +1991,22 @@
   }
 
   function applyImport(d) {
-    state = d;
+    state = normalizeState(d);
     ui.panel = null; ui.confirm = null; ui.filter = '전체'; ui.editRecord = null;
     resetBlockForm();
     resetRoutineForm();
     if (commit()) showStatus('info', '기록을 가져왔어요.', countsText(state));
     renderAll();
     $('btnImport').focus();
+  }
+
+  /* 예전 데이터 옮기기: "매일(주 7회)"이던 시각·아무 때나 루틴은 "요일: 매일"로 */
+  function normalizeState(d) {
+    (d.routines || []).forEach((r) => {
+      if (!C.isSituation(r) && r.perWeek === 7 && !(Array.isArray(r.days) && r.days.length)) { r.days = [0, 1, 2, 3, 4, 5, 6]; r.perWeek = null; }
+    });
+    if (!Array.isArray(d.events)) d.events = [];
+    return d;
   }
 
   // ---------- 시작 ----------
@@ -1988,7 +2043,7 @@
           '내보낸 파일이 있다면 돌아보기 › 기록 관리 › 가져오기로 되살릴 수 있어요. 없다면 새로 시작하면 돼요.');
       }
     } else {
-      state = res.data || S.empty();
+      state = normalizeState(res.data || S.empty());
       clearStatus();
     }
     resetRoutineForm();

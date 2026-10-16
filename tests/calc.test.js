@@ -462,3 +462,58 @@ test('규칙 제안: 상황 루틴이 섞여 있어도 오류 없이 기본 시�
   const kinds = Calc.suggestions(rs, [r], now, 0).map((x) => x.kind);
   assert.deepEqual(kinds, ['baseMin']);
 });
+
+// ---------- 얼마나 자주와 연속 기록 (한 번은 봐주기) ----------
+test('연속: 요일을 정한 루틴, 한 번은 봐주고 두 번 연속 놓치면 끊김', () => {
+  const r = { id: 'r1', days: [0, 1, 2, 3, 4, 5, 6], anchor: null, createdAt: iso(2026, 10, 1, 8) };
+  const day = (d) => rec({ startedAt: iso(2026, 10, d, 22) });
+  // 1~5 지킴, 6 놓침(봐줌), 7~9 지킴, 10·11 놓침(끊김), 12~15 지킴, 16(오늘) 아직
+  const records = [1, 2, 3, 4, 5, 7, 8, 9, 12, 13, 14, 15].map(day);
+  const s = Calc.streak(r, { blocks: [], records, events: [], holidays: [], shift: 0, now: new Date(2026, 9, 16, 12) });
+  assert.equal(s.unit, '일');
+  assert.equal(s.current, 4);
+  assert.equal(s.best, 8, '1~9일 중 6일 하나 봐주고 8번');
+  assert.equal(s.perfectBest, 5);
+  assert.deepEqual(s.forgiven, ['2026-10-06', '2026-10-10']);
+  assert.deepEqual(s.forgivenInRun, []);
+  assert.equal(s.pending, true);
+  assert.equal(s.atRisk, false);
+});
+
+test('연속: 직전에 놓쳤으면 오늘이 고비(atRisk)', () => {
+  const r = { id: 'r1', days: [1, 3, 5], anchor: null, createdAt: iso(2026, 10, 1, 8) };
+  const records = [rec({ startedAt: iso(2026, 10, 12, 9) })]; // 월 지킴, 수(14) 놓침, 금(16) 오늘
+  const s = Calc.streak(r, { blocks: [], records, events: [], holidays: [], shift: 0, now: new Date(2026, 9, 16, 9) });
+  assert.equal(s.atRisk, true);
+  assert.equal(s.current, 1);
+});
+
+test('연속: 주 몇 번만 정한 루틴은 주 단위', () => {
+  const r = { id: 'r1', perWeek: 2, anchor: null, createdAt: iso(2026, 9, 21, 8) }; // 9/21 월
+  const records = [iso(2026, 9, 22), iso(2026, 9, 24), iso(2026, 9, 29), iso(2026, 10, 1), iso(2026, 10, 6),
+    iso(2026, 10, 13), iso(2026, 10, 15)].map((t) => rec({ startedAt: t }));
+  const s = Calc.streak(r, { blocks: [], records, events: [], holidays: [], shift: 0, now: new Date(2026, 9, 16, 9) });
+  assert.equal(s.unit, '주');
+  assert.equal(s.current, 3, '9/21·9/28 채움, 10/5 주 1회(봐줘서 이어짐, 연속에 더하지는 않음), 10/12 채움 → 3주');
+  assert.equal(s.perfect, 1);
+  assert.equal(Calc.scheduleOf(r), 'weekly');
+});
+
+test('연속: 상황 루틴은 상황이 생길 때마다', () => {
+  const r = { id: 'r3', anchor: { type: 'situation', label: '집 도착' }, createdAt: iso(2026, 10, 1) };
+  const events = [12, 13, 14, 15].map((d, i) => ({ id: 'e' + i, label: '집 도착', at: iso(2026, 10, d, 18, 40) }));
+  const records = [12, 14, 15].map((d) => rec({ routineId: 'r3', startedAt: iso(2026, 10, d, 18, 50) }));
+  const s = Calc.streak(r, { blocks: [], records, events, holidays: [], shift: 0, now: new Date(2026, 9, 16, 9) });
+  assert.equal(s.unit, '번');
+  assert.equal(s.current, 3);
+  assert.equal(s.perfect, 2);
+});
+
+test('저장소 검사: 요일을 정한 루틴', () => {
+  const d = Store.empty();
+  d.routines.push({ id: 'r1', name: '단어', category: '공부', perWeek: null, days: [1, 3, 5], baseMin: 30, minMin: 10,
+    anchor: { type: 'time', time: '22:00' }, measure: { type: 'none' }, createdAt: iso(2026, 10, 1) });
+  assert.equal(Store.validate(d), true);
+  d.routines[0].days = [];
+  assert.equal(Store.validate(d), false);
+});

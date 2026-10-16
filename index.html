@@ -163,16 +163,37 @@
               <input id="rCategory" list="categoryList" autocomplete="off" value="공부" aria-describedby="rCategoryErr">
               <p class="err" id="rCategoryErr"></p>
             </div>
-            <div class="field" id="rPerWeekField">
-              <label for="rPerWeek">주 몇 번</label>
-              <select id="rPerWeek">
-                <option value="1">주 1회</option><option value="2">주 2회</option><option value="3" selected>주 3회</option>
-                <option value="4">주 4회</option><option value="5">주 5회</option><option value="6">주 6회</option>
-                <option value="7">매일</option>
-              </select>
-              <p class="hint" id="rPerWeekHint" hidden>매일로 정하면 하루만 빠져도 그 주를 못 채운 걸로 세요. 주 6회로 하면 하루 쉴 틈이 생겨요.</p>
-            </div>
-            <div class="field" id="rEachField" hidden>
+            <fieldset class="choice span2" id="rPerWeekField" aria-describedby="rDaysErr">
+              <legend>얼마나 자주</legend>
+              <label class="radio"><input type="radio" name="rFreq" value="days" checked> 요일을 정해요</label>
+              <div class="indent" id="rDaysField">
+                <div class="daypick">
+                  <label><input type="checkbox" name="rDay" value="1"><span>월</span></label>
+                  <label><input type="checkbox" name="rDay" value="2"><span>화</span></label>
+                  <label><input type="checkbox" name="rDay" value="3"><span>수</span></label>
+                  <label><input type="checkbox" name="rDay" value="4"><span>목</span></label>
+                  <label><input type="checkbox" name="rDay" value="5"><span>금</span></label>
+                  <label><input type="checkbox" name="rDay" value="6"><span>토</span></label>
+                  <label><input type="checkbox" name="rDay" value="0"><span>일</span></label>
+                </div>
+                <div class="row quick-days">
+                  <button type="button" class="btn small ghost" data-days="0,1,2,3,4,5,6">매일</button>
+                  <button type="button" class="btn small ghost" data-days="1,2,3,4,5">평일</button>
+                  <button type="button" class="btn small ghost" data-days="0,6">주말</button>
+                </div>
+                <p class="err" id="rDaysErr"></p>
+              </div>
+              <label class="radio"><input type="radio" name="rFreq" value="weekly"> 주 몇 번만 정해요 <span class="radio-sub">요일은 그때그때</span></label>
+              <div class="field indent" id="rWeeklyField" hidden>
+                <label for="rPerWeek" class="sr-only">주 몇 번</label>
+                <select id="rPerWeek">
+                  <option value="1">주 1회</option><option value="2">주 2회</option><option value="3" selected>주 3회</option>
+                  <option value="4">주 4회</option><option value="5">주 5회</option><option value="6">주 6회</option>
+                </select>
+              </div>
+              <p class="hint">연속 기록은 요일을 정하면 그 요일마다, 주 몇 번이면 주마다 세요. 한 번 놓쳐도 이어져요.</p>
+            </fieldset>
+            <div class="field span2" id="rEachField" hidden>
               <span class="field-label">얼마나 자주</span>
               <p class="each-note">상황이 올 때마다 해요</p>
             </div>

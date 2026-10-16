@@ -27,7 +27,7 @@
     var routines = [
       { id: 'r_s1', name: '자료구조 복습', category: '복습', perWeek: null, baseMin: 45, minMin: 15,
         anchor: { type: 'block', blockId: 'b_s1' }, measure: { type: 'count', unit: '장' }, createdAt: created },
-      { id: 'r_s2', name: '영어 단어 100개', category: '공부', perWeek: 7, baseMin: 30, minMin: 10,
+      { id: 'r_s2', name: '영어 단어 100개', category: '공부', perWeek: null, days: [0, 1, 2, 3, 4, 5, 6], baseMin: 30, minMin: 10,
         anchor: { type: 'time', time: '22:00' }, measure: { type: 'fixed', amount: 100, unit: '개' }, createdAt: created },
       { id: 'r_s3', name: '팀플 회의록 정리', category: '팀플', perWeek: 1, baseMin: 40, minMin: 15,
         anchor: null, measure: { type: 'none' }, createdAt: created },
