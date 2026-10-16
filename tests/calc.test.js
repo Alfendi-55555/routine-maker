@@ -517,3 +517,29 @@ test('저장소 검사: 요일을 정한 루틴', () => {
   d.routines[0].days = [];
   assert.equal(Store.validate(d), false);
 });
+
+test('규칙 제안: 요일 루틴은 자주 놓친 요일을 빼자고', () => {
+  const now = new Date(2026, 9, 19, 9); // 월
+  const r = { id: 'r1', days: [1, 3, 5], baseMin: 30, minMin: 10, anchor: null, createdAt: iso(2026, 9, 1) };
+  // 지난 4주(9/21~10/18) 월·금은 다 하고 수요일은 한 번만
+  const days = [];
+  [21, 28].forEach((d) => days.push(iso(2026, 9, d), iso(2026, 9, d + 4)));
+  days.push(iso(2026, 9, 23));
+  [5, 12].forEach((d) => days.push(iso(2026, 10, d), iso(2026, 10, d + 4)));
+  const rs = days.map((t) => rec({ startedAt: t }));
+  const s = Calc.suggestions(rs, [r], now, 0).find((x) => x.kind === 'dropDay');
+  assert.equal(s.day, 3);
+  assert.deepEqual([s.done, s.total], [1, 4]);
+  assert.deepEqual(s.to, [1, 5]);
+});
+
+test('규칙 제안: 상황 루틴 실천이 절반 미만이면', () => {
+  const now = new Date(2026, 9, 19, 9);
+  const r = { id: 'r3', anchor: { type: 'situation', label: '집 도착' }, baseMin: 20, minMin: 10, createdAt: iso(2026, 9, 1) };
+  const events = [22, 23, 24, 29, 30].map((d, i) => ({ id: 'e' + i, label: '집 도착', at: iso(2026, 9, d, 19) }));
+  const rs = [rec({ routineId: 'r3', startedAt: iso(2026, 9, 22, 19, 10) })];
+  const env = { blocks: [], events, holidays: [] };
+  const s = Calc.suggestions(rs, [r], now, 0, env).find((x) => x.kind === 'situationLow');
+  assert.deepEqual([s.occ, s.hit, s.from, s.to], [5, 1, 10, 5]);
+  assert.equal(Calc.suggestions(rs, [r], now, 0).some((x) => x.kind === 'situationLow'), false, 'env 없으면 보지 않음');
+});

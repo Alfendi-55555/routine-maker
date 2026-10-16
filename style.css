@@ -539,3 +539,41 @@ legend .guide-link { font-size: 0.8rem; margin-left: 6px; }
 .settings-body .grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 440px) { .settings-body .grid3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .settings-body input[type="time"] { min-width: 0; width: 100%; }
+
+/* 루티의 제안 */
+.ruti { flex: none; }
+.ruti-card { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.ruti-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ruti-main h3 { font-size: 0.95rem; }
+.suggest-body { padding: 16px; }
+.suggest-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.suggest-list > li { padding-bottom: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.suggest-list > li:last-child { border-bottom: 0; padding-bottom: 0; }
+.why summary { cursor: pointer; font-size: 0.82rem; color: var(--teal-ink); font-weight: 600; }
+.why p { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+#suggestTitle { display: flex; align-items: center; gap: 8px; }
+
+/* 루틴 만들기: 단계가 아래로 쌓이는 폼 */
+.new-btn {
+  min-height: 48px; border: 1px dashed var(--teal-mid); border-radius: 12px; background: var(--surface);
+  color: var(--teal-ink); font: inherit; font-size: 0.98rem; font-weight: 700; cursor: pointer;
+}
+.new-btn:hover { background: var(--accent-soft); }
+.stack-form { gap: 18px; }
+.step { display: grid; gap: 10px; }
+.step-label, .step > legend, #stepName > label { font-weight: 700; font-size: 0.95rem; }
+.step-n {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink); font-size: 0.78rem; font-weight: 700; vertical-align: 1px;
+}
+fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
+.kind-cards { display: grid; gap: 8px; }
+.kind-card {
+  position: relative; display: grid; gap: 2px; padding: 12px 14px 12px 44px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--surface); cursor: pointer;
+}
+.kind-card input { position: absolute; left: 14px; top: 15px; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.kind-card:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.kc-title { font-weight: 700; }
+.kc-sub { font-size: 0.84rem; color: var(--muted); }
+#stepDetail, #stepRest { padding-top: 14px; border-top: 1px dashed var(--line); }

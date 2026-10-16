@@ -135,21 +135,63 @@
     <section id="panel-routines" role="tabpanel" aria-labelledby="tab-routines" hidden>
       <div id="routinesDyn"></div>
 
-      <section class="card" aria-labelledby="routineFormH">
-        <h2 id="routineFormH" tabindex="-1">루틴 만들기</h2>
-        <form id="routineForm" novalidate>
-          <div class="field">
-            <label for="rName">무엇을 하나요?</label>
+      <!-- 루틴 만들기·고치기 폼: 루틴 탭의 '새 루틴 만들기'나 연필을 누르면 화면 위 창으로 옮겨져 열린다.
+           1 이름 → 2 종류 → 3 언제·얼마나 자주 → 4 시간·분량 순서로, 앞 단계를 정하면 다음 단계가 아래에 나타난다 -->
+      <section class="card" aria-labelledby="routineFormH" hidden>
+        <h2 id="routineFormH" tabindex="-1">새 루틴 만들기</h2>
+        <form id="routineForm" class="stack-form" novalidate>
+          <div class="field step" id="stepName">
+            <label for="rName"><span class="step-n" aria-hidden="true">1</span> 무엇을 하나요?</label>
             <input id="rName" autocomplete="off" placeholder="예: 자료구조 복습" aria-describedby="rNameErr">
             <p class="err" id="rNameErr"></p>
           </div>
-          <div class="grid2">
-            <div class="field">
-              <label for="rCategory">카테고리</label>
-              <input id="rCategory" list="categoryList" autocomplete="off" value="공부" aria-describedby="rCategoryErr">
-              <p class="err" id="rCategoryErr"></p>
+
+          <fieldset class="step kind-pick" id="stepKind" aria-describedby="rKindErr" hidden>
+            <legend><span class="step-n" aria-hidden="true">2</span> 어떤 루틴인가요? <button type="button" class="link-btn guide-link" data-guide>루틴 종류 알아보기</button></legend>
+            <div class="kind-cards">
+              <label class="kind-card"><input type="radio" name="rKind" value="time">
+                <span class="kc-title">시각 루틴</span><span class="kc-sub">정해진 시각에 해요 · 예: 22:00 영어 단어</span></label>
+              <label class="kind-card"><input type="radio" name="rKind" value="situation">
+                <span class="kc-title">상황 루틴</span><span class="kc-sub">어떤 상황이 되면 해요 · 예: 수업 끝나면 복습</span></label>
+              <label class="kind-card"><input type="radio" name="rKind" value="anytime">
+                <span class="kc-title">아무 때나 루틴</span><span class="kc-sub">빈 시간 아무 때나 해요 · 예: 스트레칭</span></label>
             </div>
-            <fieldset class="choice span2" id="rPerWeekField" aria-describedby="rDaysErr">
+            <p class="err" id="rKindErr"></p>
+          </fieldset>
+
+          <div class="step" id="stepDetail" hidden>
+            <p class="step-label"><span class="step-n" aria-hidden="true">3</span> 언제, 얼마나 자주 하나요?</p>
+
+            <div class="field" id="rTimeDetail" hidden>
+              <label for="rAnchorTime">몇 시에 시작하나요?</label>
+              <input type="time" id="rAnchorTime" aria-describedby="rAnchorErr">
+            </div>
+
+            <fieldset class="choice" id="rSitDetail" hidden aria-describedby="rAnchorErr">
+              <legend>어떤 상황이 되면 하나요?</legend>
+              <label class="radio"><input type="radio" name="rSit" value="block"> 고정 일정이 끝나면</label>
+              <div class="field indent" id="rAnchorBlockField" hidden>
+                <label for="rAnchorBlock" class="sr-only">어느 고정 일정이 끝나면</label>
+                <select id="rAnchorBlock" aria-describedby="rAnchorErr"></select>
+              </div>
+              <label class="radio"><input type="radio" name="rSit" value="routine"> 다른 루틴을 끝내면</label>
+              <div class="field indent" id="rAnchorRoutineField" hidden>
+                <label for="rAnchorRoutine" class="sr-only">어느 루틴을 끝내면</label>
+                <select id="rAnchorRoutine" aria-describedby="rAnchorErr"></select>
+              </div>
+              <label class="radio"><input type="radio" name="rSit" value="dayoff"> 쉬는 날이면 <span class="radio-sub">공휴일이나 고정 일정이 없는 날</span></label>
+              <label class="radio"><input type="radio" name="rSit" value="situation"> 내가 알려 주는 상황이 되면</label>
+              <div class="field indent" id="rAnchorSituationField" hidden>
+                <label for="rAnchorSituation">상황 이름</label>
+                <input id="rAnchorSituation" list="situationList" autocomplete="off" placeholder="예: 집 도착" aria-describedby="rAnchorSituationHint rAnchorErr">
+                <datalist id="situationList"></datalist>
+                <p class="hint" id="rAnchorSituationHint">오늘 탭에 이 이름의 버튼이 생겨요. 그 상황이 되면 눌러 주세요.</p>
+              </div>
+              <p class="hint">"수업 끝나면"처럼 방금 일어난 일에 붙이면 시작하기 쉬워요.</p>
+            </fieldset>
+            <p class="err" id="rAnchorErr"></p>
+
+            <fieldset class="choice" id="rPerWeekField" aria-describedby="rDaysErr" hidden>
               <legend>얼마나 자주</legend>
               <label class="radio"><input type="radio" name="rFreq" value="days" checked> 요일을 정해요</label>
               <div class="indent" id="rDaysField">
@@ -179,97 +221,69 @@
               </div>
               <p class="hint">연속 기록은 요일을 정하면 그 요일마다, 주 몇 번이면 주마다 세요. 한 번 놓쳐도 이어져요.</p>
             </fieldset>
-            <div class="field span2" id="rEachField" hidden>
+            <div class="field" id="rEachField" hidden>
               <span class="field-label">얼마나 자주</span>
               <p class="each-note">상황이 올 때마다 해요</p>
             </div>
           </div>
-          <div class="grid2">
-            <div class="field">
-              <label for="rBase">기본 시간 (분)</label>
-              <input id="rBase" inputmode="numeric" autocomplete="off" placeholder="45" aria-describedby="rBaseErr">
-              <p class="err" id="rBaseErr"></p>
-            </div>
-            <div class="field">
-              <label for="rMin">최소 버전 (분)</label>
-              <input id="rMin" inputmode="numeric" autocomplete="off" placeholder="10" aria-describedby="rMinHint rMinErr">
-              <p class="hint" id="rMinHint">바쁜 날 이만큼이라도 하면 지킨 걸로 쳐요.</p>
-              <p class="err" id="rMinErr"></p>
-            </div>
-          </div>
 
-          <fieldset class="choice" id="rAnchorSet" aria-describedby="rAnchorErr">
-            <legend>언제 시작하나요? <button type="button" class="link-btn guide-link" data-guide>루틴 종류 알아보기</button></legend>
-
-            <p class="kind-h">시각 루틴</p>
-            <label class="radio"><input type="radio" name="rAnchor" value="time"> 정해진 시각에</label>
-            <div class="field indent" id="rAnchorTimeField" hidden>
-              <label for="rAnchorTime" class="sr-only">시작 시각</label>
-              <input type="time" id="rAnchorTime" aria-describedby="rAnchorErr">
-            </div>
-
-            <p class="kind-h">상황 루틴 <span class="legend-sub">상황이 올 때마다 해요</span></p>
-            <label class="radio"><input type="radio" name="rAnchor" value="block" checked> 고정 일정이 끝나면</label>
-            <div class="field indent" id="rAnchorBlockField">
-              <label for="rAnchorBlock" class="sr-only">어느 고정 일정이 끝나면</label>
-              <select id="rAnchorBlock" aria-describedby="rAnchorErr"></select>
-            </div>
-            <label class="radio"><input type="radio" name="rAnchor" value="routine"> 다른 루틴을 끝내면</label>
-            <div class="field indent" id="rAnchorRoutineField" hidden>
-              <label for="rAnchorRoutine" class="sr-only">어느 루틴을 끝내면</label>
-              <select id="rAnchorRoutine" aria-describedby="rAnchorErr"></select>
-            </div>
-            <label class="radio"><input type="radio" name="rAnchor" value="dayoff"> 쉬는 날이면 <span class="radio-sub">공휴일이나 고정 일정이 없는 날</span></label>
-            <label class="radio"><input type="radio" name="rAnchor" value="situation"> 내가 알려 주는 상황이 되면</label>
-            <div class="field indent" id="rAnchorSituationField" hidden>
-              <label for="rAnchorSituation">상황 이름</label>
-              <input id="rAnchorSituation" list="situationList" autocomplete="off" placeholder="예: 집 도착" aria-describedby="rAnchorSituationHint rAnchorErr">
-              <datalist id="situationList"></datalist>
-              <p class="hint" id="rAnchorSituationHint">오늘 탭에 이 이름의 버튼이 생겨요. 그 상황이 되면 눌러 주세요.</p>
-            </div>
-
-            <p class="kind-h">아무 때나 루틴</p>
-            <label class="radio"><input type="radio" name="rAnchor" value="none"> 빈 시간 아무 때나</label>
-
-            <p class="hint">"수업 끝나면"처럼 방금 일어난 일에 붙이면 시작하기 쉬워요.</p>
-            <p class="err" id="rAnchorErr"></p>
-          </fieldset>
-
-          <fieldset class="choice" id="rMeasureSet">
-            <legend>무엇으로 셀 수 있나요?</legend>
-            <label class="radio"><input type="radio" name="rMeasure" value="fixed"> 늘 같은 분량이에요 <span class="radio-sub">예: 영어 단어 100개</span></label>
-            <div class="grid2 indent" id="rFixedField" hidden>
+          <div class="step" id="stepRest" hidden>
+            <p class="step-label"><span class="step-n" aria-hidden="true">4</span> 얼마나 걸리나요?</p>
+            <div class="grid2">
               <div class="field">
-                <label for="rFixedAmount">분량</label>
-                <input id="rFixedAmount" inputmode="numeric" autocomplete="off" placeholder="100" aria-describedby="rFixedAmountErr">
-                <p class="err" id="rFixedAmountErr"></p>
+                <label for="rBase">기본 시간 (분)</label>
+                <input id="rBase" inputmode="numeric" autocomplete="off" placeholder="45" aria-describedby="rBaseErr">
+                <p class="err" id="rBaseErr"></p>
               </div>
               <div class="field">
-                <label for="rFixedUnit">단위</label>
-                <input id="rFixedUnit" autocomplete="off" placeholder="개" aria-describedby="rFixedUnitErr">
-                <p class="err" id="rFixedUnitErr"></p>
+                <label for="rMin">최소 버전 (분)</label>
+                <input id="rMin" inputmode="numeric" autocomplete="off" placeholder="10" aria-describedby="rMinHint rMinErr">
+                <p class="hint" id="rMinHint">바쁜 날 이만큼이라도 하면 지킨 걸로 쳐요.</p>
+                <p class="err" id="rMinErr"></p>
               </div>
             </div>
-            <label class="radio"><input type="radio" name="rMeasure" value="count" checked> 매번 달라요 <span class="radio-sub">예: 복습할 슬라이드 장수</span></label>
-            <div class="field indent" id="rCountField">
-              <label for="rCountUnit">단위</label>
-              <input id="rCountUnit" autocomplete="off" value="장" aria-describedby="rCountUnitHint rCountUnitErr">
-              <p class="hint" id="rCountUnitHint">끝낼 때 "오늘 몇 장 했어요?"라고 물어봐요.</p>
-              <p class="err" id="rCountUnitErr"></p>
+            <div class="field">
+              <label for="rCategory">카테고리</label>
+              <input id="rCategory" list="categoryList" autocomplete="off" value="공부" aria-describedby="rCategoryErr">
+              <p class="err" id="rCategoryErr"></p>
             </div>
-            <label class="radio"><input type="radio" name="rMeasure" value="none"> 셀 수 없어요 <span class="radio-sub">예: 팀플 회의록 정리</span></label>
-          </fieldset>
 
-          <div class="row">
-            <button type="submit" class="btn primary" id="rSubmit">루틴 만들기</button>
-            <button type="button" class="btn ghost" id="rCancel" hidden>수정 취소</button>
-            <button type="button" class="btn danger push-right" id="rDelete" hidden>루틴 지우기</button>
-          </div>
-          <div class="confirm" id="rDeleteConfirm" hidden>
-            <p id="rDeleteText"></p>
+            <fieldset class="choice" id="rMeasureSet">
+              <legend>무엇으로 셀 수 있나요?</legend>
+              <label class="radio"><input type="radio" name="rMeasure" value="fixed"> 늘 같은 분량이에요 <span class="radio-sub">예: 영어 단어 100개</span></label>
+              <div class="grid2 indent" id="rFixedField" hidden>
+                <div class="field">
+                  <label for="rFixedAmount">분량</label>
+                  <input id="rFixedAmount" inputmode="numeric" autocomplete="off" placeholder="100" aria-describedby="rFixedAmountErr">
+                  <p class="err" id="rFixedAmountErr"></p>
+                </div>
+                <div class="field">
+                  <label for="rFixedUnit">단위</label>
+                  <input id="rFixedUnit" autocomplete="off" placeholder="개" aria-describedby="rFixedUnitErr">
+                  <p class="err" id="rFixedUnitErr"></p>
+                </div>
+              </div>
+              <label class="radio"><input type="radio" name="rMeasure" value="count" checked> 매번 달라요 <span class="radio-sub">예: 복습할 슬라이드 장수</span></label>
+              <div class="field indent" id="rCountField">
+                <label for="rCountUnit">단위</label>
+                <input id="rCountUnit" autocomplete="off" value="장" aria-describedby="rCountUnitHint rCountUnitErr">
+                <p class="hint" id="rCountUnitHint">끝낼 때 "오늘 몇 장 했어요?"라고 물어봐요.</p>
+                <p class="err" id="rCountUnitErr"></p>
+              </div>
+              <label class="radio"><input type="radio" name="rMeasure" value="none"> 셀 수 없어요 <span class="radio-sub">예: 팀플 회의록 정리</span></label>
+            </fieldset>
+
             <div class="row">
-              <button type="button" class="btn danger" id="rDeleteYes">지우기</button>
-              <button type="button" class="btn" id="rDeleteNo">취소</button>
+              <button type="submit" class="btn primary" id="rSubmit">루틴 만들기</button>
+              <button type="button" class="btn ghost" id="rCancel" hidden>수정 취소</button>
+              <button type="button" class="btn danger push-right" id="rDelete" hidden>루틴 지우기</button>
+            </div>
+            <div class="confirm" id="rDeleteConfirm" hidden>
+              <p id="rDeleteText"></p>
+              <div class="row">
+                <button type="button" class="btn danger" id="rDeleteYes">지우기</button>
+                <button type="button" class="btn" id="rDeleteNo">취소</button>
+              </div>
             </div>
           </div>
         </form>
@@ -427,6 +441,15 @@
         </div>
       </section>
   </div>
+</dialog>
+
+<!-- 루티의 제안: 규칙 다듬기 -->
+<dialog id="suggestDialog" class="dialog" aria-labelledby="suggestTitle">
+  <div class="dialog-head">
+    <h2 id="suggestTitle">루티의 제안</h2>
+    <button type="button" class="btn ghost small" id="suggestClose">닫기</button>
+  </div>
+  <div id="suggestBody" class="suggest-body"></div>
 </dialog>
 
 <!-- 가이드: 활동 다섯 가지 -->

@@ -187,7 +187,7 @@
         holidays.status = d.holidays.length ? 'ok' : 'empty';
       })
       .catch(() => { holidays.status = 'error'; })
-      .then(() => { renderToday(); renderCalendar(); renderHolidayInfo(); });
+      .then(() => { renderToday(); renderCalendar(); renderReview(); renderHolidayInfo(); });
   }
   function holidayStatusText() {
     return {
@@ -350,11 +350,13 @@
     root.querySelectorAll('.err').forEach((e) => { e.textContent = ''; });
     root.querySelectorAll('[aria-invalid]').forEach((e) => e.removeAttribute('aria-invalid'));
   }
+  /* 오류가 난 칸 중 화면에 보이는 첫 칸으로 초점 (아직 펼쳐지지 않은 단계의 칸은 건너뜀) */
   function focusFirst(ids) {
-    const id = ids.find(Boolean);
-    if (!id) return false;
-    const el = $(id);
-    const target = el.matches('input, select, textarea, button') ? el : el.querySelector('input, select, textarea');
+    const list = ids.filter(Boolean);
+    if (!list.length) return false;
+    const targetOf = (id) => { const el = $(id); return el.matches('input, select, textarea, button') ? el : el.querySelector('input, select, textarea'); };
+    const visible = list.map(targetOf).find((t) => t && t.getClientRects().length > 0);
+    const target = visible || targetOf(list[0]);
     if (target) target.focus();
     return true;
   }
@@ -850,7 +852,7 @@
     if (!state.routines.length) {
       sec.append(emptyBox('루틴이 없어요.',
         '주 1회처럼 작게 하나 만들어 보세요. 시작 신호(앵커)와 바쁜 날용 최소 버전을 함께 정해요.',
-        h('button', { type: 'button', class: 'btn', onclick: () => switchTab('routines', 'rName') }, '루틴 만들기')));
+        h('button', { type: 'button', class: 'btn', onclick: openNewRoutine }, '루틴 만들기')));
       return sec;
     }
     const todo = infos.filter((i) => i.todo && i.r.id !== shownId).sort((a, b) =>
@@ -1159,9 +1161,10 @@
 
   function renderRoutines() {
     const box = $('routinesDyn');
-    const nodes = [h('h2', { class: 'sr-only' }, '내 루틴')];
+    const nodes = [h('h2', { class: 'sr-only' }, '내 루틴'),
+      h('button', { type: 'button', class: 'new-btn', id: 'btnNewRoutine', onclick: openNewRoutine }, '+ 새 루틴 만들기')];
     if (!state.routines.length) {
-      nodes.push(emptyBox('아직 루틴이 없어요.', '아래에서 주 1회처럼 작게 하나 만들어 보세요. 한 번에 한두 개로 시작하는 편이 오래가요.'));
+      nodes.push(emptyBox('아직 루틴이 없어요.', '위의 ‘새 루틴 만들기’로 주 1회처럼 작게 하나 만들어 보세요. 한 번에 한두 개로 시작하는 편이 오래가요.'));
     } else {
       const now = new Date();
       nodes.push(h('ul', { class: 'items plain-list', role: 'list' }, state.routines.map((r) => {
@@ -1202,7 +1205,7 @@
     if (commit()) showStatus('info', q(r.name) + ' 루틴을 지웠어요.', '기록은 돌아보기에 남아 있어요.' +
       (chained.length ? ' ' + chained.map((x) => q(x.name)).join(', ') + '은(는) 이제 아무 때나 루틴(주 ' + chained[0].perWeek + '회)이에요.' : ''));
     renderAll();
-    $('routineFormH').focus();
+    ($('btnNewRoutine') || $('tab-routines')).focus();
   }
 
   function setRoutineDays(days) { document.querySelectorAll('input[name="rDay"]').forEach((el) => { el.checked = days.includes(Number(el.value)); }); }
@@ -1212,16 +1215,38 @@
   function setRadio(name, value) { document.querySelectorAll('input[name="' + name + '"]').forEach((el) => { el.checked = el.value === value; }); }
 
   const SITUATION_ANCHORS = ['block', 'routine', 'dayoff', 'situation'];
+  /* 고른 루틴 종류와 상황 종류 → 시작 신호 종류: time | none | block | routine | dayoff | situation | null(아직) */
+  function getAnchorType() {
+    const kind = selectedRadio('rKind');
+    if (kind === 'time') return 'time';
+    if (kind === 'anytime') return 'none';
+    if (kind === 'situation') return selectedRadio('rSit');
+    return null;
+  }
+  function setAnchorType(type) {
+    if (type === 'time') { setRadio('rKind', 'time'); setRadio('rSit', ''); }
+    else if (type === 'none') { setRadio('rKind', 'anytime'); setRadio('rSit', ''); }
+    else if (SITUATION_ANCHORS.includes(type)) { setRadio('rKind', 'situation'); setRadio('rSit', type); }
+    else { setRadio('rKind', ''); setRadio('rSit', ''); }
+  }
+  /* 앞 단계를 정하면 다음 단계가 아래에 나타난다 (고칠 때는 모두 보임) */
   function toggleRoutineFields() {
-    const a = selectedRadio('rAnchor');
+    const editing = !!ui.editRoutine;
+    const nameOk = editing || $('rName').value.trim() !== '';
+    const kind = selectedRadio('rKind');
+    const a = getAnchorType();
+    $('stepKind').hidden = !nameOk;
+    $('stepDetail').hidden = !(nameOk && kind);
+    $('rTimeDetail').hidden = kind !== 'time';
+    $('rSitDetail').hidden = kind !== 'situation';
+    $('stepRest').hidden = !(nameOk && kind && (kind !== 'situation' || a));
     $('rAnchorBlockField').hidden = a !== 'block';
-    $('rAnchorTimeField').hidden = a !== 'time';
     $('rAnchorRoutineField').hidden = a !== 'routine';
     $('rAnchorSituationField').hidden = a !== 'situation';
     // 상황 루틴은 "주 N회" 대신 "상황이 올 때마다"
-    const each = SITUATION_ANCHORS.includes(a);
-    $('rPerWeekField').hidden = each;
-    $('rEachField').hidden = !each;
+    const each = kind === 'situation';
+    $('rPerWeekField').hidden = !kind || each;
+    $('rEachField').hidden = !each || !a;
     const freq = selectedRadio('rFreq');
     $('rDaysField').hidden = freq !== 'days';
     $('rWeeklyField').hidden = freq !== 'weekly';
@@ -1273,7 +1298,7 @@
     setRoutineDays([0, 1, 2, 3, 4, 5, 6]);
     $('rBase').value = '';
     $('rMin').value = '';
-    setRadio('rAnchor', state.blocks.length ? 'block' : 'none');
+    setAnchorType(null);
     $('rAnchorTime').value = '';
     $('rAnchorSituation').value = '';
     setRadio('rMeasure', 'count');
@@ -1287,6 +1312,15 @@
     syncAnchorBlocks();
     syncAnchorRoutines();
     toggleRoutineFields();
+  }
+
+  /* 새 루틴 만들기: 빈 폼을 화면 위 창으로 */
+  function openNewRoutine() {
+    if (ui.tab !== 'routines') switchTab('routines');
+    resetRoutineForm();
+    openEditDialog('routineForm', '새 루틴 만들기', () => $('btnNewRoutine') || $('tab-routines'), resetRoutineForm);
+    $('rCancel').hidden = false;
+    $('rCancel').textContent = '취소';
   }
 
   function editRoutine(id) {
@@ -1303,17 +1337,18 @@
     $('rBase').value = String(r.baseMin);
     $('rMin').value = String(r.minMin);
     const a = r.anchor;
-    if (a && a.type === 'block' && findBlock(a.blockId)) { setRadio('rAnchor', 'block'); $('rAnchorBlock').value = a.blockId; }
-    else if (a && a.type === 'time') { setRadio('rAnchor', 'time'); $('rAnchorTime').value = a.time; }
-    else if (a && a.type === 'routine' && findRoutine(a.routineId)) { setRadio('rAnchor', 'routine'); $('rAnchorRoutine').value = a.routineId; }
-    else if (a && a.type === 'situation') { setRadio('rAnchor', 'situation'); $('rAnchorSituation').value = a.label; }
-    else if (a && a.type === 'dayoff') setRadio('rAnchor', 'dayoff');
-    else setRadio('rAnchor', 'none');
+    if (a && a.type === 'block' && findBlock(a.blockId)) { setAnchorType('block'); $('rAnchorBlock').value = a.blockId; }
+    else if (a && a.type === 'time') { setAnchorType('time'); $('rAnchorTime').value = a.time; }
+    else if (a && a.type === 'routine' && findRoutine(a.routineId)) { setAnchorType('routine'); $('rAnchorRoutine').value = a.routineId; }
+    else if (a && a.type === 'situation') { setAnchorType('situation'); $('rAnchorSituation').value = a.label; }
+    else if (a && a.type === 'dayoff') setAnchorType('dayoff');
+    else setAnchorType('none');
     setRadio('rMeasure', r.measure.type);
     if (r.measure.type === 'fixed') { $('rFixedAmount').value = String(r.measure.amount); $('rFixedUnit').value = r.measure.unit; }
     if (r.measure.type === 'count') $('rCountUnit').value = r.measure.unit;
     $('rSubmit').textContent = '고친 내용 저장';
     $('rCancel').hidden = false;
+    $('rCancel').textContent = '수정 취소';
     $('rDelete').hidden = false;
     toggleRoutineFields();
     openEditDialog('routineForm', q(r.name) + ' 고치기', () => {
@@ -1394,7 +1429,12 @@
   }
 
   function bindRoutineForm() {
-    document.querySelectorAll('input[name="rAnchor"], input[name="rMeasure"]').forEach((el) => el.addEventListener('change', toggleRoutineFields));
+    document.querySelectorAll('input[name="rKind"], input[name="rSit"], input[name="rMeasure"]').forEach((el) => el.addEventListener('change', () => {
+      if (el.name === 'rKind') setErr('stepKind', '', 'rKindErr');
+      if (el.name === 'rSit') setErr('rSitDetail', '', 'rAnchorErr');
+      toggleRoutineFields();
+    }));
+    $('rName').addEventListener('input', toggleRoutineFields);
     $('rPerWeek').addEventListener('change', toggleRoutineFields);
     document.querySelectorAll('input[name="rFreq"]').forEach((el) => el.addEventListener('change', toggleRoutineFields));
     document.querySelectorAll('.quick-days [data-days]').forEach((b) => b.addEventListener('click', () => {
@@ -1436,8 +1476,10 @@
       if (!minMsg && !baseMsg && Number($('rMin').value) >= Number($('rBase').value)) minMsg = '최소 버전은 기본보다 짧게 적어 주세요';
       errs.push(setErr('rMin', minMsg));
 
-      const anchorType = selectedRadio('rAnchor');
+      const anchorType = getAnchorType();
       let anchor = null;
+      if (!selectedRadio('rKind')) errs.push(setErr('stepKind', '어떤 루틴인지 골라 주세요', 'rKindErr'));
+      else if (!anchorType) errs.push(setErr('rSitDetail', '어떤 상황이 되면 할지 골라 주세요', 'rAnchorErr'));
       if (anchorType === 'block') {
         if (!$('rAnchorBlock').value || !findBlock($('rAnchorBlock').value)) errs.push(setErr('rAnchorBlock', '고정 일정을 골라 주세요. 없다면 주간 틀에서 먼저 넣어 주세요', 'rAnchorErr'));
         else anchor = { type: 'block', blockId: $('rAnchorBlock').value };
@@ -1497,7 +1539,7 @@
       }
       resetRoutineForm();
       renderAll();
-      if (editing && dialog) closeEditDialog(); else $('rName').focus();
+      if (dialog) closeEditDialog(); else $('rName').focus();
     });
   }
 
@@ -1716,17 +1758,128 @@
     box.replaceChildren(...nodes);
   }
 
-  // ---------- 규칙 다듬기 제안 ----------
-  function activeSuggestions() {
-    const dismissed = state.dismissed || [];
-    return C.suggestions(state.records, state.routines, new Date(), shift()).filter((s) => !dismissed.includes(s.key));
+  // ---------- 규칙 다듬기 제안 (루티) ----------
+  /* 루티: 제안을 건네는 동그란 캐릭터 (임시 디자인) */
+  function rutiFace(size) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const el = (tag, attrs) => { const n = document.createElementNS(NS, tag); Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v)); return n; };
+    const svg = el('svg', { viewBox: '0 0 40 40', width: String(size || 40), height: String(size || 40), 'aria-hidden': 'true', class: 'ruti' });
+    svg.append(
+      el('circle', { cx: '20', cy: '21', r: '17', fill: 'var(--teal-mid)' }),
+      el('circle', { cx: '14', cy: '19', r: '2.2', fill: 'var(--ink)' }),
+      el('circle', { cx: '26', cy: '19', r: '2.2', fill: 'var(--ink)' }),
+      el('path', { d: 'M14 26 Q20 31 26 26', fill: 'none', stroke: 'var(--ink)', 'stroke-width': '2', 'stroke-linecap': 'round' }),
+      el('circle', { cx: '11', cy: '24', r: '2', fill: 'var(--cream)', opacity: '0.9' }),
+      el('circle', { cx: '29', cy: '24', r: '2', fill: 'var(--cream)', opacity: '0.9' }));
+    return svg;
   }
 
+  function activeSuggestions() {
+    const dismissed = state.dismissed || [];
+    return C.suggestions(state.records, state.routines, new Date(), shift(), sitEnv())
+      .filter((s) => !dismissed.includes(s.key) && findRoutine(s.routineId));
+  }
+  function actionable(list) { return list.filter((s) => s.kind !== 'steady'); }
+
+  /* 제안 하나를 문장·버튼·근거로 */
+  function suggestionView(s) {
+    const r = findRoutine(s.routineId);
+    const v = { text: '', apply: null, edit: false, why: '' };
+    if (s.kind === 'perWeek') {
+      v.text = q(r.name) + '은(는) 지난 2주 동안 ' + perWeekText(s.from) + ' 목표에 ' + s.counts.join('·') + '번 했어요. ' + perWeekText(s.to) + '로 낮춰 볼까요?';
+      v.apply = perWeekText(s.to) + '로 바꾸기';
+      v.why = '주 몇 번 루틴이 지난 2주 연속 목표를 못 채우고, 2주 평균(' + C.round1((s.counts[0] + s.counts[1]) / 2) + '번)이 목표보다 1번 이상 적을 때 제안해요. 평균을 반올림한 횟수예요.';
+    } else if (s.kind === 'baseMin') {
+      const last5 = state.records.filter((x) => x.routineId === r.id && x.version !== 'min')
+        .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt)).slice(-5).map((x) => x.actualMin);
+      v.text = q(r.name) + ' 기본 시간은 ' + s.from + '분인데, 최근에는 보통 ' + Math.round(s.median) + '분 걸렸어요. 기본을 ' + s.to + '분으로 바꿔 볼까요?';
+      v.apply = '기본 ' + s.to + '분으로 바꾸기';
+      v.why = '기본 버전 기록이 5개 이상이고, 최근 5번의 중앙값이 기본 시간과 20% 이상, 5분 이상 다를 때 제안해요. 최근 5번: ' +
+        last5.join('·') + '분 → 중앙값 ' + Math.round(s.median) + '분을 5분 단위로 맞췄어요.';
+    } else if (s.kind === 'dropDay') {
+      const stats = C.dayStats(state.records, r, new Date(), shift());
+      v.text = q(r.name) + '은(는) 지난 4주 동안 ' + C.DAY_NAMES[s.day] + '요일에 ' + s.total + '번 중 ' + s.done + '번 했어요. ' +
+        C.DAY_NAMES[s.day] + '요일을 빼고 ' + daysGoal(s.to) + '로 해 볼까요?';
+      v.apply = C.DAY_NAMES[s.day] + '요일 빼기';
+      v.why = '요일을 정한 루틴에서, 지난 4주 동안 4번 중 1번 이하로 한 요일이 있을 때 제안해요 (요일이 2개 이상일 때만). 요일별: ' +
+        stats.map((x) => C.DAY_NAMES[x.day] + ' ' + x.done + '/' + x.total).join(' · ');
+    } else if (s.kind === 'situationLow') {
+      const lead = q(r.name) + '은(는) 지난 4주 동안 상황이 ' + s.occ + '번 생겼는데 ' + s.hit + '번 했어요 (' + anchorPhrase(r) + '). ';
+      if (s.to) {
+        v.text = lead + '최소 버전을 ' + s.from + '분에서 ' + s.to + '분으로 줄여 볼까요?';
+        v.apply = '최소 ' + s.to + '분으로 줄이기';
+      } else {
+        v.text = lead + '시작 신호를 바꿔 보는 건 어때요?';
+        v.edit = true;
+      }
+      v.why = '상황 루틴의 지난 4주 실천이 절반보다 적을 때(상황이 4번 이상 있었을 때) 제안해요. 최소 버전이 5분보다 길면 절반으로 줄이자고, 이미 짧으면 시작 신호를 바꿔 보자고 해요.';
+    } else {
+      v.text = q(r.name) + '은(는) 지난 4주 내내 목표를 채웠어요.';
+      v.why = '주 몇 번 루틴이 지난 4주 모두 목표를 채웠을 때 알려 드려요. 횟수를 늘리자고는 하지 않아요.';
+    }
+    return v;
+  }
+
+  /* 오늘 탭 날짜 옆 칩: 누르면 제안 창 */
   function reviewBanner() {
-    const list = activeSuggestions().filter((s) => s.kind !== 'steady');
+    const n = actionable(activeSuggestions()).length;
+    if (!n) return null;
+    return h('button', { type: 'button', class: 'chip-btn', onclick: (ev) => openSuggestions(ev.currentTarget), 'aria-label': '루티의 제안 ' + n + '개 보기' },
+      '제안 ' + n + '개');
+  }
+
+  /* 돌아보기 맨 위: 펼치지 않고 "루티가 제안 N개를 가져왔어요"만 */
+  function suggestionSection() {
+    const list = activeSuggestions();
     if (!list.length) return null;
-    return h('button', { type: 'button', class: 'chip-btn', onclick: () => switchTab('review', 'suggestH'), 'aria-label': '규칙 다듬기 제안 ' + list.length + '개 보기' },
-      '제안 ' + list.length + '개');
+    const n = actionable(list).length;
+    return h('section', { class: 'ruti-card', 'aria-labelledby': 'suggestH' },
+      rutiFace(44),
+      h('div', { class: 'ruti-main' },
+        h('h3', { id: 'suggestH', tabindex: '-1' }, n ? '루티가 규칙을 다듬을 제안 ' + n + '개를 가져왔어요' : '루티가 전할 소식이 있어요'),
+        h('p', { class: 'sub' }, '기록을 보고 고르면 좋을 것만 골랐어요.')),
+      h('button', { type: 'button', class: 'btn small primary', onclick: (ev) => openSuggestions(ev.currentTarget) }, n ? '제안 보기' : '보기'));
+  }
+
+  function openSuggestions(opener) {
+    ui.suggestReturn = opener || null;
+    renderSuggestList();
+    const dlg = $('suggestDialog');
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    const first = $('suggestBody').querySelector('button');
+    (first || $('suggestClose')).focus();
+  }
+  function closeSuggestions() {
+    const dlg = $('suggestDialog');
+    if (dlg.open) { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
+  }
+  function renderSuggestList() {
+    const list = activeSuggestions();
+    const body = $('suggestBody');
+    if (!list.length) {
+      body.replaceChildren(h('p', { class: 'sub' }, '지금은 제안할 게 없어요. 기록이 쌓이면 다시 살펴볼게요.'));
+      return;
+    }
+    body.replaceChildren(h('ul', { class: 'suggest-list' }, list.map((s) => {
+      const v = suggestionView(s);
+      return h('li', { class: 'suggest' },
+        h('p', null, v.text),
+        h('details', { class: 'why' }, h('summary', null, '왜 이 제안이에요?'), h('p', null, v.why)),
+        h('div', { class: 'row' },
+          v.apply ? h('button', { type: 'button', class: 'btn small primary', onclick: () => applySuggestion(s) }, v.apply) : null,
+          v.edit ? h('button', {
+            type: 'button', class: 'btn small primary',
+            onclick: () => { dismissSuggestion(s.key); commit(); closeSuggestions(); switchTab('routines'); editRoutine(s.routineId); }
+          }, '루틴 고치기') : null,
+          h('button', { type: 'button', class: 'btn small ghost', onclick: () => { dismissSuggestion(s.key); commit(); afterSuggestion(); } },
+            v.apply || v.edit ? '이번 주는 넘어가기' : '확인')));
+    })));
+  }
+  function afterSuggestion() {
+    renderAll();
+    renderSuggestList();
+    const first = $('suggestBody').querySelector('button');
+    (first || $('suggestClose')).focus();
   }
 
   function dismissSuggestion(key) {
@@ -1737,45 +1890,25 @@
   function applySuggestion(s) {
     const r = findRoutine(s.routineId);
     if (!r) return;
-    if (s.kind === 'perWeek') r.perWeek = s.to;
-    if (s.kind === 'baseMin') r.baseMin = s.to;
+    let done = '';
+    if (s.kind === 'perWeek') { r.perWeek = s.to; done = perWeekText(s.to) + '로'; }
+    if (s.kind === 'baseMin') { r.baseMin = s.to; done = '기본 ' + s.to + '분으로'; }
+    if (s.kind === 'dropDay') { r.days = s.to; done = daysGoal(s.to) + '로'; }
+    if (s.kind === 'situationLow' && s.to) { r.minMin = s.to; done = '최소 ' + s.to + '분으로'; }
     dismissSuggestion(s.key);
-    if (commit()) {
-      showStatus('info', q(r.name) + ' 루틴을 ' + (s.kind === 'perWeek' ? perWeekText(s.to) + '로' : '기본 ' + s.to + '분으로') + ' 바꿨어요.',
-        '되돌리려면 루틴 탭에서 고치면 돼요.');
-    }
-    renderAll();
-    const head = $('suggestH') || $('tab-review');
-    head.focus();
+    if (commit()) showStatus('info', q(r.name) + ' 루틴을 ' + done + ' 바꿨어요.', '되돌리려면 루틴 탭에서 연필을 눌러 고치면 돼요.');
+    afterSuggestion();
   }
 
-  function suggestionSection() {
-    const list = activeSuggestions();
-    if (!list.length) return null;
-    return h('section', { class: 'card', 'aria-labelledby': 'suggestH' },
-      h('h3', { id: 'suggestH', tabindex: '-1' }, '규칙 다듬기 제안'),
-      h('p', { class: 'sub' }, '기록에 근거한 제안이에요. 반영하거나 이번 주는 넘어갈 수 있어요.'),
-      h('ul', { class: 'plain' }, list.map((s) => {
-        const r = findRoutine(s.routineId);
-        let text, apply = null;
-        if (s.kind === 'perWeek') {
-          text = q(r.name) + ' 루틴은 지난 2주 동안 ' + perWeekText(s.from) + ' 목표에 ' + s.counts.join('·') + '일 했어요. ' +
-            perWeekText(s.to) + '로 낮추면 지키기 쉬워져요.';
-          apply = perWeekText(s.to) + '로 바꾸기';
-        } else if (s.kind === 'baseMin') {
-          text = q(r.name) + ' 기본 시간은 ' + s.from + '분인데, 최근 5번 중앙값은 ' + Math.round(s.median) + '분이에요. 기본을 ' +
-            s.to + '분으로 바꾸면 빈 시간 판단이 실제에 가까워져요.';
-          apply = '기본 ' + s.to + '분으로 바꾸기';
-        } else {
-          text = q(r.name) + ' 루틴은 지난 4주 내내 목표를 채웠어요.';
-        }
-        return h('li', { class: 'suggest' }, h('p', null, text), h('div', { class: 'row' },
-          apply ? h('button', { type: 'button', class: 'btn small primary', onclick: () => applySuggestion(s) }, apply) : null,
-          h('button', {
-            type: 'button', class: 'btn small ghost',
-            onclick: () => { dismissSuggestion(s.key); commit(); renderAll(); const t = $('suggestH') || $('reviewDyn').querySelector('h2'); if (t) t.focus(); }
-          }, apply ? '이번 주는 넘어가기' : '확인')));
-      })));
+  function bindSuggestions() {
+    $('suggestTitle').prepend(rutiFace(28));
+    $('suggestClose').addEventListener('click', closeSuggestions);
+    $('suggestDialog').addEventListener('click', (ev) => { if (ev.target === $('suggestDialog')) closeSuggestions(); });
+    $('suggestDialog').addEventListener('close', () => {
+      const t = ui.suggestReturn;
+      if (t && document.contains(t)) t.focus();
+      else { const h3 = $('suggestH'); if (h3) h3.focus(); }
+    });
   }
 
   function observationSection() {
@@ -2072,6 +2205,7 @@
     bindEditDialog();
     bindGuide();
     bindSettings();
+    bindSuggestions();
     bindHolidayForm();
     bindSettingsForm();
     bindData();

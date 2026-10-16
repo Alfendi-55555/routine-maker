@@ -457,7 +457,8 @@
   // ---------- 규칙 다듬기 제안 ----------
   /* 기록에 근거한 제안만. 횟수를 올리자는 제안은 하지 않는다(목표는 행동, 기록이 좋다고 목표를 키우지 않음).
    * 반환: [{ key, routineId, kind: 'perWeek'|'baseMin'|'steady', from, to }] */
-  function suggestions(records, routines, now, shift) {
+  /* env(선택): 상황 루틴 계산용 { blocks, events, holidays, off } */
+  function suggestions(records, routines, now, shift, env) {
     var out = [];
     var wk = dayKey(startOfWeek(shifted(now, shift)));
     routines.forEach(function (r) {
@@ -474,6 +475,27 @@
       if (weeks.length && weeks.every(function (w) { return w.state === 'done'; })) {
         out.push({ key: wk + '|' + r.id + '|steady', routineId: r.id, kind: 'steady' });
       }
+      // 요일 루틴: 지난 4주 동안 4번 중 1번 이하로 한 요일은 빼자고 (요일이 2개 이상일 때만)
+      if (scheduleOf(r) === 'days' && r.days.length >= 2) {
+        var stats = dayStats(records, r, now, shift);
+        var worst = stats.filter(function (x) { return x.total >= 3 && x.done / x.total <= 0.25; })
+          .sort(function (a, b) { return a.done / a.total - b.done / b.total; })[0];
+        if (worst) {
+          out.push({ key: wk + '|' + r.id + '|dropDay', routineId: r.id, kind: 'dropDay', day: worst.day, done: worst.done, total: worst.total,
+            to: r.days.filter(function (d) { return d !== worst.day; }) });
+        }
+      }
+      // 상황 루틴: 지난 4주 실천이 절반 미만이면 (상황 4번 이상) 최소 버전을 줄이거나 시작 신호를 바꿔 보자고
+      if (isSituation(r) && env) {
+        var full = Object.assign({ records: records, now: now, shift: shift }, env);
+        var ws4 = addDays(startOfWeek(shifted(now, shift)), -28);
+        var p4 = situationProgress(r, full, ws4, startOfWeek(shifted(now, shift)));
+        if (p4.occ >= 4 && p4.hit / p4.occ < 0.5) {
+          var smaller = r.minMin > 5 ? Math.max(5, round5(r.minMin / 2)) : null;
+          out.push({ key: wk + '|' + r.id + '|situationLow', routineId: r.id, kind: 'situationLow', occ: p4.occ, hit: p4.hit,
+            from: r.minMin, to: smaller && smaller < r.minMin ? smaller : null });
+        }
+      }
       var base = records.filter(function (x) { return x.routineId === r.id && x.version !== 'min'; }).sort(byStart).slice(-5);
       if (base.length >= 5) {
         var med = median(base.map(function (x) { return x.actualMin; }));
@@ -484,6 +506,22 @@
       }
     });
     return out;
+  }
+
+  /* 요일 루틴의 지난 4주(이번 주 제외) 요일별 실천: [{ day, done, total }] */
+  function dayStats(records, r, now, shift) {
+    var thisWeek = startOfWeek(shifted(now, shift)), made = startOfDay(shifted(r.createdAt, shift));
+    var done = doneDays(records, r.id, addDays(thisWeek, -28), thisWeek, shift);
+    return r.days.map(function (day) {
+      var total = 0, hit = 0;
+      for (var i = 4; i >= 1; i--) {
+        var d = addDays(addDays(thisWeek, -7 * i), (day + 6) % 7);
+        if (d.getTime() < made.getTime()) continue;
+        total += 1;
+        if (done[dayKey(d)]) hit += 1;
+      }
+      return { day: day, done: hit, total: total };
+    });
   }
 
   /* 타이머를 늦게 끈 것 같은지: 12시간 초과, 또는 예상의 2배를 넘고 30분 이상 더 걸림 */
@@ -609,7 +647,7 @@
     SITUATION_TYPES: SITUATION_TYPES, routineKind: routineKind, isSituation: isSituation, occurrenceDays: occurrenceDays,
     situationProgress: situationProgress, situationWeek: situationWeek, situationWeeks: situationWeeks,
     situationMissedYesterday: situationMissedYesterday, situationToday: situationToday, checkSituationLabel: checkSituationLabel,
-    scheduleOf: scheduleOf, streakUnit: streakUnit, opportunities: opportunities, streak: streak,
+    scheduleOf: scheduleOf, dayStats: dayStats, streakUnit: streakUnit, opportunities: opportunities, streak: streak,
     DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,
     upcomingHolidays: upcomingHolidays, validHolidays: validHolidays,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,
