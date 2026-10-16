@@ -10,6 +10,9 @@
   const TABS = ['today', 'routines', 'week', 'review'];
   const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
   const RECORDS_PAGE = 30;
+  const KIND_ORDER = ['수업', '통학', '알바', '기타'];
+  const KIND_CLASS = { 수업: 'k-class', 통학: 'k-commute', 알바: 'k-work', 기타: 'k-etc' };
+  const kindClass = (kind) => KIND_CLASS[kind] || 'k-etc';
 
   let state = S.empty();
   const ui = {
@@ -495,7 +498,7 @@
     const bar = h('div', { class: 'timeline', 'aria-hidden': 'true' });
     gaps.forEach((g) => bar.append(h('span', { class: 'tl-gap' + (g.state === 'past' ? ' past' : ''), style: pos(g.start, g.end) })));
     todays.forEach((b) => bar.append(h('span', {
-      class: 'tl-block' + (C.toMin(b.end) <= nowMin ? ' past' : ''), style: pos(C.toMin(b.start), C.toMin(b.end))
+      class: 'tl-block ' + kindClass(b.kind) + (C.toMin(b.end) <= nowMin ? ' past' : ''), style: pos(C.toMin(b.start), C.toMin(b.end))
     })));
     if (nowMin >= ds && nowMin <= de) bar.append(h('span', { class: 'tl-now', style: 'left:' + ((nowMin - ds) / total * 100) + '%' }));
 
@@ -524,7 +527,8 @@
       h('div', null, bar,
         h('div', { class: 'tl-scale', 'aria-hidden': 'true' }, h('span', null, s.dayStart), h('span', null, s.dayEnd + (de > 1440 ? ' (다음 날)' : ''))),
         h('div', { class: 'legend', 'aria-hidden': 'true' },
-          h('span', { class: 'lg-block' }, '고정 일정'), h('span', { class: 'lg-gap' }, '빈 시간'), h('span', { class: 'lg-now' }, '지금'))),
+          KIND_ORDER.filter((k) => todays.some((b) => (KIND_CLASS[b.kind] ? b.kind : '기타') === k)).map((k) => h('span', { class: 'lg-k ' + kindClass(k) }, k)),
+          h('span', { class: 'lg-gap' }, '빈 시간'), h('span', { class: 'lg-now' }, '지금'))),
       gaps.length ? null : h('p', { class: 'sub' }, '오늘은 15분 넘는 빈 시간이 없어요. 루틴은 최소 버전을 고려해 보세요.'),
       list);
   }
@@ -910,7 +914,6 @@
     $('rCountUnit').value = '장';
     $('rFixedAmount').value = '';
     $('rFixedUnit').value = '';
-    $('routineFormH').textContent = '루틴 만들기';
     $('rSubmit').textContent = '루틴 만들기';
     $('rCancel').hidden = true;
     syncAnchorBlocks();
@@ -934,23 +937,53 @@
     setRadio('rMeasure', r.measure.type);
     if (r.measure.type === 'fixed') { $('rFixedAmount').value = String(r.measure.amount); $('rFixedUnit').value = r.measure.unit; }
     if (r.measure.type === 'count') $('rCountUnit').value = r.measure.unit;
-    $('routineFormH').textContent = q(r.name) + ' 고치기';
     $('rSubmit').textContent = '고친 내용 저장';
     $('rCancel').hidden = false;
     toggleRoutineFields();
-    $('routineFormH').scrollIntoView({ block: 'start' });
-    $('rName').focus();
+    openEditDialog('routineForm', q(r.name) + ' 고치기', () => {
+      const item = $('rc-' + id);
+      return item ? item.querySelector('button') : $('tab-routines');
+    }, resetRoutineForm);
+  }
+
+  // ---------- 고치기 대화상자 ----------
+  /* 고치기는 화면 위 대화상자로 띄운다. 기존 입력 폼을 대화상자 안으로 옮겼다가 닫을 때 제자리로 돌려놓아서
+   * 입력 검사·저장 코드를 그대로 쓴다. returnTo: 닫은 뒤 초점을 돌려줄 요소를 찾는 함수 */
+  let dialog = null;
+  function openEditDialog(formId, title, returnTo, onClose) {
+    if (dialog) closeEditDialog();
+    const form = $(formId);
+    const home = document.createComment('form-home');
+    form.before(home);
+    dialog = { form, home, returnTo, onClose };
+    $('editDialogTitle').textContent = title;
+    $('editDialogBody').append(form);
+    const dlg = $('editDialog');
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    const first = form.querySelector('input:not([type="radio"]):not([type="checkbox"]), select');
+    if (first) first.focus();
+  }
+  function closeEditDialog() {
+    const d = dialog;
+    if (!d) return;
+    dialog = null; // close 이벤트가 다시 불러도 한 번만 처리
+    d.home.replaceWith(d.form);
+    const dlg = $('editDialog');
+    if (dlg.open) { if (typeof dlg.close === 'function') dlg.close(); else dlg.removeAttribute('open'); }
+    if (d.onClose) d.onClose();
+    const target = d.returnTo && d.returnTo();
+    if (target) target.focus();
+  }
+  function bindEditDialog() {
+    $('editDialogClose').addEventListener('click', closeEditDialog);
+    $('editDialog').addEventListener('close', closeEditDialog); // Esc
+    $('editDialog').addEventListener('click', (ev) => { if (ev.target === $('editDialog')) closeEditDialog(); }); // 바깥 누르기
   }
 
   function bindRoutineForm() {
     document.querySelectorAll('input[name="rAnchor"], input[name="rMeasure"]').forEach((el) => el.addEventListener('change', toggleRoutineFields));
     $('rPerWeek').addEventListener('change', toggleRoutineFields);
-    $('rCancel').addEventListener('click', () => {
-      const id = ui.editRoutine;
-      resetRoutineForm();
-      const item = id && $('rc-' + id);
-      (item ? item.querySelector('button') : $('rName')).focus();
-    });
+    $('rCancel').addEventListener('click', () => { if (dialog) closeEditDialog(); else resetRoutineForm(); });
     ['rName', 'rCategory', 'rBase', 'rMin', 'rFixedAmount', 'rFixedUnit', 'rCountUnit', 'rAnchorTime', 'rAnchorBlock'].forEach((id) =>
       $(id).addEventListener('input', () => { if ($(id).getAttribute('aria-invalid')) setErr(id, '', id.startsWith('rAnchor') ? 'rAnchorErr' : null); }));
 
@@ -1012,8 +1045,7 @@
       }
       resetRoutineForm();
       renderAll();
-      const card = $('rc-' + saved.id);
-      if (card && editing) card.querySelector('button').focus(); else $('rName').focus();
+      if (editing && dialog) closeEditDialog(); else $('rName').focus();
     });
   }
 
@@ -1027,20 +1059,13 @@
       box.replaceChildren(...nodes);
       return;
     }
-    nodes.push(h('section', { class: 'card', 'aria-labelledby': 'weekOverviewH' },
-      h('h3', { id: 'weekOverviewH' }, '요일별로 보기'),
-      h('ul', { class: 'plain' }, DAY_ORDER.map((d) => {
-        const list = C.dayBlocks(state.blocks, d);
-        return h('li', null, h('div', { class: 'gap-row' },
-          h('span', { class: 'when' }, C.DAY_NAMES[d] + '요일'),
-          h('span', { class: 'sub' }, list.length ? list.map((b) => b.start + '–' + b.end + ' ' + b.name).join(' · ') : '고정 일정 없음')));
-      }))));
+    nodes.push(weekChart());
 
     nodes.push(h('ul', { class: 'items plain-list', role: 'list', 'aria-label': '고정 일정 목록' }, state.blocks.map((b) => {
       const anchored = state.routines.filter((r) => r.anchor && r.anchor.type === 'block' && r.anchor.blockId === b.id);
       const li = h('li', { class: 'item', id: 'bc-' + b.id },
         h('div', { class: 'item-head' }, h('h3', { class: 'item-name' }, b.name), h('span', { class: 'tag' }, b.kind)),
-        h('p', { class: 'facts' }, daysText(b.days) + ' · ', h('span', { class: 'num' }, b.start + '–' + b.end),
+        h('p', { class: 'sub' }, daysText(b.days) + ' · ', h('span', { class: 'num' }, b.start + '–' + b.end),
           anchored.length ? ' · 앵커로 쓰는 루틴: ' + anchored.map((r) => r.name).join(', ') : ''),
         h('div', { class: 'row' },
           h('button', { type: 'button', class: 'btn small', onclick: () => editBlock(b.id), 'aria-label': q(b.name) + ' 고치기' }, '고치기'),
@@ -1056,6 +1081,50 @@
       return li;
     })));
     box.replaceChildren(...nodes);
+  }
+
+  /* 요일별 막대: 고정 일정을 종류별 색으로. 막대에 마우스를 올리거나 초점을 주면 이름·시간이 뜨고, 누르면 고치기 */
+  function weekChart() {
+    const s = state.settings;
+    let ds = C.toMin(s.dayStart), de = C.dayEndMin(s);
+    state.blocks.forEach((b) => { ds = Math.min(ds, C.toMin(b.start)); de = Math.max(de, C.toMin(b.end)); });
+    ds = Math.floor(ds / 60) * 60;
+    de = Math.ceil(de / 60) * 60;
+    const total = de - ds;
+    const pct = (m) => (m - ds) / total * 100;
+    const step = total > 12 * 60 ? 180 : 120;
+    const ticks = [];
+    for (let t = Math.ceil(ds / step) * step; t <= de; t += step) ticks.push(t);
+
+    const rows = DAY_ORDER.map((d) => {
+      const list = C.dayBlocks(state.blocks, d);
+      const bar = h('div', { class: 'wbar' },
+        ticks.map((t) => h('span', { class: 'wtick', style: 'left:' + pct(t) + '%', 'aria-hidden': 'true' })),
+        list.map((b) => {
+          const left = pct(C.toMin(b.start));
+          const width = pct(C.toMin(b.end)) - left;
+          const edge = left < 15 ? ' tip-left' : (left + width > 85 ? ' tip-right' : '');
+          return h('button', {
+            type: 'button', class: 'seg ' + kindClass(b.kind) + edge,
+            style: 'left:' + left + '%;width:' + width + '%',
+            'data-tip': b.name + ' · ' + b.start + '–' + b.end,
+            'aria-label': C.DAY_NAMES[d] + '요일 ' + b.name + ' (' + b.kind + ') ' + b.start + '–' + b.end + ', 고치기',
+            onclick: () => editBlock(b.id)
+          }, width >= 12 ? h('span', { class: 'seg-label', 'aria-hidden': 'true' }, b.name) : null);
+        }));
+      return h('div', { class: 'wrow' },
+        h('span', { class: 'wday' + (list.length ? '' : ' muted') }, C.DAY_NAMES[d]),
+        bar);
+    });
+    const scale = h('div', { class: 'wrow wscale', 'aria-hidden': 'true' }, h('span', { class: 'wday' }),
+      h('div', { class: 'wticks' }, ticks.map((t) => h('span', { style: 'left:' + pct(t) + '%' }, (Math.floor(t / 60) % 24) + '시'))));
+    const kinds = KIND_ORDER.filter((k) => state.blocks.some((b) => (KIND_ORDER.includes(b.kind) ? b.kind : '기타') === k));
+
+    return h('section', { class: 'card', 'aria-labelledby': 'weekOverviewH' },
+      h('h3', { id: 'weekOverviewH' }, '요일별로 보기'),
+      h('p', { class: 'sub' }, '막대에 마우스를 올리면 일정 이름이 보이고, 누르면 고칠 수 있어요.'),
+      h('div', { class: 'week-chart' }, rows, scale),
+      h('div', { class: 'legend', 'aria-label': '색 구분' }, kinds.map((k) => h('span', { class: 'lg-k ' + kindClass(k) }, k))));
   }
 
   function deleteBlock(id) {
@@ -1084,7 +1153,6 @@
     document.querySelectorAll('input[name="bDay"]').forEach((el) => { el.checked = false; });
     $('bStart').value = '';
     $('bEnd').value = '';
-    $('blockFormH').textContent = '고정 일정 넣기';
     $('bSubmit').textContent = '고정 일정 넣기';
     $('bCancel').hidden = true;
   }
@@ -1099,20 +1167,16 @@
     document.querySelectorAll('input[name="bDay"]').forEach((el) => { el.checked = b.days.includes(Number(el.value)); });
     $('bStart').value = b.start;
     $('bEnd').value = b.end;
-    $('blockFormH').textContent = q(b.name) + ' 고치기';
     $('bSubmit').textContent = '고친 내용 저장';
     $('bCancel').hidden = false;
-    $('blockFormH').scrollIntoView({ block: 'start' });
-    $('bName').focus();
+    openEditDialog('blockForm', q(b.name) + ' 고치기', () => {
+      const item = $('bc-' + id);
+      return item ? item.querySelector('button') : $('tab-week');
+    }, resetBlockForm);
   }
 
   function bindBlockForm() {
-    $('bCancel').addEventListener('click', () => {
-      const id = ui.editBlock;
-      resetBlockForm();
-      const item = id && $('bc-' + id);
-      (item ? item.querySelector('button') : $('bName')).focus();
-    });
+    $('bCancel').addEventListener('click', () => { if (dialog) closeEditDialog(); else resetBlockForm(); });
     ['bName', 'bStart', 'bEnd'].forEach((id) => $(id).addEventListener('input', () => { if ($(id).getAttribute('aria-invalid')) setErr(id, ''); }));
     document.querySelectorAll('input[name="bDay"]').forEach((el) => el.addEventListener('change', () => setErr('bDaysSet', '', 'bDaysErr')));
 
@@ -1140,7 +1204,7 @@
       }
       resetBlockForm();
       renderAll();
-      $('bName').focus();
+      if (editing && dialog) closeEditDialog(); else $('bName').focus();
     });
   }
 
@@ -1531,6 +1595,7 @@
     bindTaskForm();
     bindRoutineForm();
     bindBlockForm();
+    bindEditDialog();
     bindSettingsForm();
     bindData();
 
