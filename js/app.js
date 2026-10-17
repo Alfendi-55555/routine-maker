@@ -1030,7 +1030,21 @@
     todays.forEach((b) => bar.append(h('span', {
       class: 'tl-block' + (C.toMin(b.end) <= nowMin ? ' past' : ''), style: pos(C.toMin(b.start), C.toMin(b.end))
     })));
-    const marks = infos.filter((i) => i.todo && i.anchor.today && i.anchor.plannedMin != null && i.anchor.plannedMin >= ds && i.anchor.plannedMin <= de);
+    // 오늘 한 루틴: 실제로 한 시간만큼 루틴 색으로
+    const L = nowL();
+    const doneRecs = state.records.filter((x) => x.routineId && findRoutine(x.routineId) && C.logicalKey(x.startedAt, L.shift) === C.dayKey(L.day));
+    doneRecs.forEach((x) => {
+      const st = Math.round((Date.parse(x.startedAt) - L.day.getTime()) / 60000);
+      bar.append(h('span', { class: 'tl-rec ' + rc(findRoutine(x.routineId)), style: pos(st, st + x.actualMin), title: x.name + ' · ' + clockText(x.startedAt) + ' · ' + x.actualMin + '분' }));
+    });
+    // 시각 루틴: 고정 일정처럼 그 시각부터 걸리는 시간만큼 막대에 (할 차례)
+    const timed = infos.filter((i) => i.todo && i.anchor.type === 'time' && i.anchor.today && i.anchor.plannedMin < de);
+    timed.forEach((i) => bar.append(h('span', {
+      class: 'tl-plan ' + rc(i.r), style: pos(i.anchor.plannedMin, i.anchor.plannedMin + i.predBase),
+      title: i.r.name + ' · ' + C.fmtHM(i.anchor.plannedMin) + '–' + C.fmtHM(i.anchor.plannedMin + i.predBase)
+    })));
+    // 그 밖의 시작 신호(고정 일정이 끝나면 등)는 점으로
+    const marks = infos.filter((i) => i.todo && i.anchor.type !== 'time' && i.anchor.today && i.anchor.plannedMin != null && i.anchor.plannedMin >= ds && i.anchor.plannedMin <= de);
     const track = h('div', { class: 'tl-track', 'aria-hidden': 'true' },
       marks.map((i) => h('span', { class: 'tl-mark ' + rc(i.r), style: 'left:' + pct(i.anchor.plannedMin) + '%', title: i.r.name + ' · ' + C.fmtHM(i.anchor.plannedMin) })),
       bar,
@@ -1044,10 +1058,16 @@
     // 화면 읽기 프로그램과 자세히 보고 싶은 사람을 위한 글 목록 (접어 둠)
     const rows = todays.map((b) => ({ start: C.toMin(b.start), block: b }))
       .concat(gaps.map((g) => ({ start: g.start, gap: g })))
+      .concat(timed.map((i) => ({ start: i.anchor.plannedMin, plan: i })))
       .sort((x, y) => x.start - y.start);
     const list = h('details', { class: 'tl-details' },
       h('summary', null, '일정·빈 시간 목록'),
       h('ul', { class: 'plain' }, rows.map((row) => {
+        if (row.plan) {
+          const i = row.plan;
+          return h('li', null, h('div', { class: 'gap-row' },
+            h('span', null, h('span', { class: 'num' }, C.fmtHM(i.anchor.plannedMin) + '–' + C.fmtHM(i.anchor.plannedMin + i.predBase)), ' ' + i.r.name), h('span', null, '시각 루틴 · 할 차례')));
+        }
         if (row.block) {
           const b = row.block;
           return h('li', null, h('div', { class: 'gap-row past' },
@@ -1067,6 +1087,8 @@
       h('div', { class: 'tl-ticks', 'aria-hidden': 'true' }, ticks.map((t) => h('span', { style: 'left:' + pct(t) + '%' }, (Math.floor(t / 60) % 24) + '시'))),
       h('div', { class: 'legend', 'aria-hidden': 'true' },
         h('span', { class: 'lg-block' }, '고정 일정'), h('span', { class: 'lg-gap' }, '빈 시간'),
+        doneRecs.length ? h('span', { class: 'lg-rec' }, '한 루틴') : null,
+        timed.length ? h('span', { class: 'lg-plan' }, '시각 루틴(할 차례)') : null,
         marks.length ? h('span', { class: 'lg-mark' }, '루틴 시작 신호') : null, h('span', { class: 'lg-now' }, '지금')),
       list);
   }
