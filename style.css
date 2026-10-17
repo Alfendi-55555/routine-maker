@@ -724,3 +724,75 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 }
 /* 하는 중: 최소·기본 시간을 채우면 짧게 */
 .active-note { justify-self: start; margin: 0; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--teal-ink); font-size: 0.85rem; font-weight: 700; }
+
+/* ---------- 넓은 화면(데스크톱): 왼쪽 메뉴 + 여러 칸 ---------- */
+.side-extra, .side-label, .tab-ic, .tl-label { display: none; }
+.cols { display: grid; gap: 20px; min-width: 0; }
+.col-main, .col-side { display: grid; gap: 20px; align-content: start; min-width: 0; }
+.today-cols .col-side { display: none; }         /* 휴대폰에서는 오른쪽 칸(이번 주·제안)을 보이지 않음 */
+.rv-cols .col-side { order: -1; }                /* 휴대폰 돌아보기: 제안·요약을 기록 위에 */
+.ws-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; }
+.ws-row .rc-dot { width: 10px; height: 10px; }
+.ws-main { display: grid; gap: 4px; min-width: 0; font-size: 0.9rem; font-weight: 600; }
+.rcard.on { border: 1.5px solid var(--accent); background: var(--accent-soft); }
+
+@media (min-width: 1024px) {
+  body { display: grid; grid-template-columns: 232px minmax(0, 1fr); align-items: start; }
+  .topbar { grid-column: 1; grid-row: 1; height: 100vh; border-bottom: 0; border-right: 1px solid var(--line); overflow-y: auto; }
+  .topbar-inner { max-width: none; height: 100%; flex-direction: column; flex-wrap: nowrap; align-items: stretch; justify-content: flex-start; gap: 4px; padding: 20px 14px; }
+  .brand-row { display: contents; }
+  .brand { order: 0; margin: 0 0 14px 10px; font-size: 1.2rem; }
+  .tabs { order: 1; flex-direction: column; gap: 4px; align-self: stretch; }
+  .tabs [role="tab"] {
+    flex: none; display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 12px;
+    border: 0; border-radius: 10px; font-size: 0.95rem; text-align: left;
+  }
+  .tabs [role="tab"]:hover { background: var(--chip); }
+  .tabs [role="tab"][aria-selected="true"] { background: var(--accent-soft); color: var(--teal-ink); }
+  .tab-ic { display: block; flex: none; }
+  .side-extra { order: 2; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .side-h { margin: 12px 0 0 10px; font-size: 0.78rem; font-weight: 700; color: var(--muted); }
+  #sideSit .sit-btns { flex-direction: column; }
+  #sideSit .sit-btn { justify-content: flex-start; text-align: left; }
+  .side-extra .new-btn, .side-extra .btn { min-height: 42px; }
+  .about { order: 3; margin-top: auto; padding: 8px 12px; font-size: 0.9rem; }
+  .settings-btn { order: 4; display: flex; align-items: center; align-self: stretch; margin: 0; width: auto; height: auto; min-height: 42px; justify-content: flex-start; gap: 10px; padding: 0 12px; border-radius: 10px; }
+  .side-label { display: inline; font-size: 0.95rem; font-weight: 600; }
+
+  .wrap { grid-column: 2; grid-row: 1; max-width: 1240px; width: 100%; margin: 0; padding: 24px 32px 48px; }
+  .cols { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
+  .rv-cols .col-side { order: 0; }
+
+  /* 오늘: 시간 막대를 크게, 칸에 이름 */
+  .today-cols .col-side { display: grid; }
+  .today-cols #btnOther, .today-cols .section:has(> #sitH) { display: none; }  /* 왼쪽 메뉴에 있음 */
+  .day-card .tl-track .timeline { height: 44px; }
+  .tl-label { display: block; padding: 0 6px; overflow: hidden; white-space: nowrap; font-size: 0.75rem; font-weight: 700; line-height: 44px; }
+  .tl-block .tl-label { color: #ffffff; }
+  .tl-plan .tl-label { line-height: 38px; color: var(--ink); }
+  .today-head h2 { font-size: 1.5rem; }
+
+  /* 캘린더: 주 보기 칸이 넓어지니 글자도 조금 크게 */
+  .cal-cols { grid-template-columns: minmax(0, 1fr) 300px; }
+  .ev { font-size: 0.72rem; }
+  .wk-hours { font-size: 0.72rem; }
+  .wk-grid { grid-template-columns: 40px repeat(7, minmax(0, 1fr)); }
+
+  /* 루틴: 목록과 상세를 나란히 */
+  .rt-cols { grid-template-columns: 320px minmax(0, 1fr); }
+  .rt-list { display: grid; gap: 10px; align-content: start; position: sticky; top: 24px; }
+  .rt-list .rcard { grid-template-columns: 12px minmax(0, 1fr); }
+  .rt-detail { display: grid; gap: 16px; min-width: 0; }
+  .rd-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .rd-col { display: grid; gap: 16px; min-width: 0; }
+  .rd-status { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; gap: 12px 20px; }
+  .rd-status > .fit-line, .rd-status > .row, .rd-status > .panel { grid-column: 1 / -1; }
+  .rd-title h2 { font-size: 1.5rem; }
+
+  /* 돌아보기 기록: 한 줄에 이름 · 정보 · 시간 · 연필 */
+  li.rec { grid-template-columns: minmax(140px, 1fr) minmax(0, 1.6fr) auto auto; align-items: center; gap: 4px 16px; }
+  li.rec .rec-name { grid-column: 1; grid-row: 1; }
+  li.rec .rec-meta { grid-column: 2; grid-row: 1; }
+  li.rec .rec-times { grid-column: 3; grid-row: 1; }
+  li.rec .rec-del { grid-column: 4; grid-row: 1; }
+}

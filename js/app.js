@@ -38,6 +38,9 @@
 
   // ---------- 작은 도구 ----------
   const $ = (id) => document.getElementById(id);
+  /* 넓은 화면(데스크톱): 왼쪽 메뉴 + 여러 칸 배치 */
+  const WIDE = window.matchMedia ? window.matchMedia('(min-width: 1024px)') : { matches: false };
+  const isWide = () => WIDE.matches;
 
   function h(tag, props, ...kids) {
     const el = document.createElement(tag);
@@ -236,9 +239,11 @@
 
     const nodes = [h('h2', { class: 'sr-only' }, '캘린더')];
     if (ui.calView === 'month') nodes.push(monthView(L, todayKey, byDay, hmap, toggle));
-    else nodes.push(...weekView(L, todayKey, byDay, hmap, toggle));
-    nodes.push(calendarDay(ui.calSel, hmap, byDay));
-    nodes.push(blockList());
+    else nodes.push(weekView(L, todayKey, byDay, hmap, toggle)[0]);
+    const view = nodes.pop();
+    nodes.push(h('div', { class: 'cols cal-cols' },
+      h('div', { class: 'col-main' }, view),
+      h('aside', { class: 'col-side', 'aria-label': '고른 날과 고정 일정' }, calendarDay(ui.calSel, hmap, byDay), blockList())));
     box.replaceChildren(...nodes);
   }
 
@@ -423,9 +428,9 @@
     const legend = h('div', { class: 'legend wk-legend', 'aria-hidden': 'true' },
       h('span', { class: 'lg-block' }, '고정 일정'), h('span', { class: 'lg-rec' }, '한 루틴(루틴 색)'),
       h('span', { class: 'lg-plan' }, '할 차례'), h('span', { class: 'lg-task' }, '다른 활동'), h('span', { class: 'lg-now' }, '지금'));
-    grid.append(legend,
-      h('p', { class: 'sub' }, '칸을 누르면 그 루틴이나 고정 일정이 열려요. 날짜를 누르면 그날을 아래에서 자세히 봐요.'),
-      holidays.status === 'ok' ? null : h('p', { class: 'hint' }, holidayStatusText()));
+    grid.append(...[legend,
+      h('p', { class: 'sub' }, '칸을 누르면 그 루틴이나 고정 일정이 열려요. 날짜를 누르면 그날을 ' + (isWide() ? '오른쪽에서' : '아래에서') + ' 자세히 봐요.'),
+      holidays.status === 'ok' ? null : h('p', { class: 'hint' }, holidayStatusText())].filter(Boolean));
     return [grid];
   }
 
@@ -594,8 +599,8 @@
       });
       tab.addEventListener('keydown', (ev) => {
         let next = null;
-        if (ev.key === 'ArrowRight') next = (i + 1) % TABS.length;
-        else if (ev.key === 'ArrowLeft') next = (i - 1 + TABS.length) % TABS.length;
+        if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') next = (i + 1) % TABS.length;
+        else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') next = (i - 1 + TABS.length) % TABS.length;
         else if (ev.key === 'Home') next = 0;
         else if (ev.key === 'End') next = TABS.length - 1;
         if (next === null) return;
@@ -923,17 +928,65 @@
     }
 
     let shownId = null;
+    const mainCol = [];
     if (!state.active && (state.blocks.length || state.routines.length)) {
       const now = nowCard(L, gaps, todays, infos);
       shownId = now.shownId;
-      nodes.push(now.node);
+      mainCol.push(now.node);
     }
-    nodes.push(h('button', { type: 'button', class: 'other-btn', id: 'btnOther', onclick: openOtherDialog }, '+ 다른 활동 기록하기'));
+    mainCol.push(h('button', { type: 'button', class: 'other-btn', id: 'btnOther', onclick: openOtherDialog }, '+ 다른 활동 기록하기'));
     const sit = situationButtons(L);
-    if (sit) nodes.push(sit);
-    nodes.push(todayRoutines(infos, shownId));
+    if (sit) mainCol.push(sit);
+    mainCol.push(todayRoutines(infos, shownId));
+    nodes.push(h('div', { class: 'cols today-cols' },
+      h('div', { class: 'col-main' }, mainCol),
+      h('aside', { class: 'col-side', 'aria-label': '이번 주와 제안' }, weekSummary(), todaySuggestion())));
     box.replaceChildren(...nodes);
+    renderSideSit();
     updateTaskHint();
+  }
+
+  /* 데스크톱 오늘 오른쪽: 루틴별 이번 주 (월→일 작은 막대) */
+  function weekSummary() {
+    if (!state.routines.length) return null;
+    return h('section', { class: 'card week-sum', 'aria-labelledby': 'weekSumH' },
+      h('div', { class: 'section-head' }, h('h3', { id: 'weekSumH' }, '이번 주'), h('span', { class: 'sub' }, '월 → 일')),
+      h('ul', { class: 'plain' }, state.routines.map((r) => {
+        let txt;
+        if (C.isSituation(r)) { const wk = C.situationWeek(r, sitEnv()); txt = wk.occ ? wk.occ + '번 중 ' + wk.hit + '번' : '상황 없음'; }
+        else txt = C.weekDone(state.records, r.id, new Date(), shift()) + '/' + weekTarget(r);
+        return h('li', { class: 'ws-row ' + rc(r) },
+          h('span', { class: 'rc-dot', 'aria-hidden': 'true' }),
+          h('span', { class: 'ws-main' }, h('button', { type: 'button', class: 'name-link', onclick: () => openRoutine(r.id) }, r.name), weekStrip(r)),
+          h('span', { class: 'sub' }, txt));
+      })));
+  }
+  /* 데스크톱 오늘 오른쪽: 루티의 제안 */
+  function todaySuggestion() {
+    const n = actionable(activeSuggestions()).length;
+    if (!n) return null;
+    return h('section', { class: 'ruti-card', 'aria-labelledby': 'todaySugH' },
+      rutiFace(36),
+      h('div', { class: 'ruti-main' }, h('h3', { id: 'todaySugH' }, '루티의 제안 ' + n + '개'), h('p', { class: 'sub' }, '기록을 보고 규칙을 다듬을 곳을 골랐어요.')),
+      h('button', { type: 'button', class: 'btn small primary', onclick: (ev) => openSuggestions(ev.currentTarget) }, '보기'));
+  }
+  /* 데스크톱 왼쪽 메뉴의 상황 버튼 (오늘 탭과 같은 동작) */
+  function renderSideSit() {
+    const box = $('sideSit');
+    if (!box) return;
+    const labels = situationLabels();
+    if (!labels.length) { box.replaceChildren(); return; }
+    const L = nowL();
+    box.replaceChildren(h('p', { class: 'side-h' }, '지금 이런 상황이에요'),
+      h('div', { class: 'sit-btns' }, labels.map((label) => {
+        const evs = todayEvents(label, L);
+        const on = evs.length > 0;
+        return h('button', {
+          type: 'button', class: 'sit-btn', 'aria-pressed': String(on),
+          'aria-label': q(label) + (on ? ', 오늘 ' + clockText(evs[evs.length - 1].at) + '에 표시함. 누르면 취소' : ' 상황 표시'),
+          onclick: () => toggleSituation(label)
+        }, label, on ? h('span', { class: 'sit-time num' }, ' ' + clockText(evs[evs.length - 1].at)) : null);
+      })));
   }
 
   /* 내가 알려 주는 상황: 상황 루틴에 쓴 상황마다 버튼. 누르면 그 시각이 상황이 생긴 시각이 된다 */
@@ -970,14 +1023,16 @@
       const linked = state.routines.filter((r) => r.anchor && r.anchor.type === 'situation' && r.anchor.label === label).map((r) => r.name);
       if (commit()) showStatus('info', q(label) + ' 상황이에요.', '연결된 루틴: ' + linked.join(', ') + '. 지금부터 시작까지 걸린 시간을 재요.');
     }
+    const from = document.activeElement && document.activeElement.closest('#sideSit') ? '#sideSit' : '#todayDyn';
     renderToday();
-    const again = [...document.querySelectorAll('.sit-btn')].find((b) => b.textContent.startsWith(label));
+    const again = [...document.querySelectorAll(from + ' .sit-btn')].find((b) => b.textContent.startsWith(label));
     if (again) again.focus();
   }
 
   /* 다른 활동(반복하지 않는 일) 기록하기: 입력칸을 화면 위 창으로 */
   function openOtherDialog() {
-    openEditDialog('taskForm', '다른 활동 기록하기', () => (state.active ? $('activeTitle') : $('btnOther')), null);
+    const from = document.activeElement;
+    openEditDialog('taskForm', '다른 활동 기록하기', () => (state.active ? $('activeTitle') : from && document.contains(from) ? from : $('btnOther')), null);
     updateTaskHint();
   }
 
@@ -1045,7 +1100,7 @@
     gaps.forEach((g) => bar.append(h('span', { class: 'tl-gap' + (g.state === 'past' ? ' past' : ''), style: pos(g.start, g.end) })));
     todays.forEach((b) => bar.append(h('span', {
       class: 'tl-block' + (C.toMin(b.end) <= nowMin ? ' past' : ''), style: pos(C.toMin(b.start), C.toMin(b.end))
-    })));
+    }, h('span', { class: 'tl-label' }, b.name))));
     // 오늘 한 루틴: 실제로 한 시간만큼 루틴 색으로
     const L = nowL();
     const doneRecs = state.records.filter((x) => x.routineId && findRoutine(x.routineId) && C.logicalKey(x.startedAt, L.shift) === C.dayKey(L.day));
@@ -1058,7 +1113,7 @@
     timed.forEach((i) => bar.append(h('span', {
       class: 'tl-plan ' + rc(i.r), style: pos(i.anchor.plannedMin, i.anchor.plannedMin + i.predBase),
       title: i.r.name + ' · ' + C.fmtHM(i.anchor.plannedMin) + '–' + C.fmtHM(i.anchor.plannedMin + i.predBase)
-    })));
+    }, h('span', { class: 'tl-label' }, i.r.name))));
     // 그 밖의 시작 신호(고정 일정이 끝나면 등)는 점으로
     const marks = infos.filter((i) => i.todo && i.anchor.type !== 'time' && i.anchor.today && i.anchor.plannedMin != null && i.anchor.plannedMin >= ds && i.anchor.plannedMin <= de);
     const track = h('div', { class: 'tl-track', 'aria-hidden': 'true' },
@@ -1412,6 +1467,21 @@
   function renderRoutines() {
     const box = $('routinesDyn');
     const open = ui.routine && findRoutine(ui.routine);
+    if (isWide() && state.routines.length) {
+      const sel = open || state.routines[0];
+      box.replaceChildren(h('div', { class: 'cols rt-cols' },
+        h('aside', { class: 'rt-list', 'aria-label': '내 루틴' },
+          h('div', { class: 'section-head' }, h('h2', null, '내 루틴 ' + state.routines.length + '개')),
+          h('ul', { class: 'rcards', role: 'list' }, state.routines.map((r) => h('li', null,
+            h('button', { type: 'button', class: 'rcard ' + rc(r) + (r.id === sel.id ? ' on' : ''), id: 'rc-' + r.id, 'aria-current': r.id === sel.id ? 'true' : null, onclick: () => openRoutine(r.id) },
+              h('span', { class: 'rc-dot', 'aria-hidden': 'true' }),
+              h('span', { class: 'rcard-main' },
+                h('span', { class: 'rcard-top' }, h('span', { class: 'rcard-name' }, r.name), h('span', { class: 'rcard-kind' }, kindName(r))),
+                h('span', { class: 'rcard-meta' }, routineSummary(r))))))),
+          h('button', { type: 'button', class: 'new-btn', id: 'btnNewRoutine', onclick: openNewRoutine }, '+ 새 루틴 만들기')),
+        h('section', { class: 'rt-detail', 'aria-labelledby': 'rdTitle' }, routineDetail(sel))));
+      return;
+    }
     if (open) { box.replaceChildren(...routineDetail(open)); return; }
     ui.routine = null;
     const nodes = [h('h2', { class: 'sr-only' }, '내 루틴'),
@@ -1550,7 +1620,12 @@
 
     // 8. 최근 기록
     nodes.push(recentRecords(r));
-    return nodes;
+    if (!isWide()) return nodes;
+    // 넓은 화면: 머리·지금 상태 아래 두 칸 (왼쪽 달력·규칙·연결, 오른쪽 변화·제안·기록). 뒤로 가기는 없음
+    const by = (id) => nodes.find((n) => n.getAttribute && n.getAttribute('aria-labelledby') === id) || null;
+    return [nodes[1], nodes[2], h('div', { class: 'rd-cols' },
+      h('div', { class: 'rd-col' }, by('rdCalH'), by('rdRuleH'), by('rdLinkH')),
+      h('div', { class: 'rd-col' }, by('rdChangeH'), by('rdSugH'), by('rdRecH')))];
   }
 
   /* 지난 5주 달력: 한 날을 루틴 색으로 칠한다. 요일 루틴은 할 날이 아닌 날, 상황 루틴은 상황이 없던 날을 옅게 */
@@ -2138,11 +2213,9 @@
       box.replaceChildren(...nodes);
       return;
     }
-    const sug = suggestionSection();
-    if (sug) nodes.push(sug);
-    if (state.routines.length) nodes.push(routineLinks());
-    nodes.push(ratioSection());
-    nodes.push(recordsSection());
+    nodes.push(h('div', { class: 'cols rv-cols' },
+      h('div', { class: 'col-main' }, recordsSection()),
+      h('aside', { class: 'col-side', 'aria-label': '제안과 요약' }, suggestionSection(), state.routines.length ? routineLinks() : null, ratioSection())));
     box.replaceChildren(...nodes);
   }
 
@@ -2602,6 +2675,10 @@
 
   function init() {
     bindTabs();
+    $('sideNewRoutine').addEventListener('click', openNewRoutine);
+    $('sideOther').addEventListener('click', openOtherDialog);
+    const onWide = () => { renderRoutines(); renderToday(); };
+    if (WIDE.addEventListener) WIDE.addEventListener('change', onWide);
     bindActive();
     bindTaskForm();
     bindRoutineForm();
