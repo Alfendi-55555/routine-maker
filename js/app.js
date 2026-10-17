@@ -148,11 +148,20 @@
       box.replaceChildren(...[h('strong', null, title), body ? h('span', null, body) : null].filter(Boolean));
     }
     const el = $('status');
-    el.className = 'status ' + kind;
+    clearTimeout(statusTimer);
+    const toast = kind === 'info';
+    el.className = 'status ' + kind + (toast ? ' toast' : '');
     el.replaceChildren(...[h('strong', null, title), body ? h('span', null, body) : null,
-      action ? h('span', null, h('button', { type: 'button', class: 'btn small', id: 'statusAction', onclick: action.onclick }, action.label)) : null]
+      action ? h('span', null, h('button', { type: 'button', class: 'btn small', id: 'statusAction', onclick: action.onclick }, action.label)) : null,
+      toast ? h('button', { type: 'button', class: 'toast-close', 'aria-label': '안내 닫기', onclick: clearStatus }, '×') : null]
       .filter(Boolean));
+    // 안내는 4초(되돌리기가 있으면 8초) 뒤 사라진다. 마우스를 올리거나 초점이 안에 있으면 기다린다
+    if (toast) statusTimer = setTimeout(function hide() {
+      if (el.matches(':hover') || el.contains(document.activeElement)) { statusTimer = setTimeout(hide, 1500); return; }
+      clearStatus();
+    }, action ? 8000 : 4000);
   }
+  let statusTimer = null;
 
   // ---------- 공휴일 (data/holidays.json, GitHub Actions가 매달 갱신) ----------
   const holidays = { list: [], updatedAt: null, status: 'loading' }; // status: loading | ok | empty | error
@@ -508,7 +517,7 @@
     const start = C.atMinutes(C.addDays(nowL().day, -daysAgo), 12 * 60);
     return { startedAt: start.toISOString(), endedAt: new Date(start.getTime() + actual * 60000).toISOString() };
   }
-  function clearStatus() { const el = $('status'); el.className = 'status'; el.replaceChildren(); }
+  function clearStatus() { clearTimeout(statusTimer); const el = $('status'); el.className = 'status'; el.replaceChildren(); }
 
   /* 저장. 실패하면 오류 상태로 안내하고 false */
   function commit() {
@@ -664,7 +673,15 @@
     const frac = ms / (a.estimateMin * 60000);
     $('progressBar').style.width = Math.min(100, frac * 100) + '%';
     $('progress').classList.toggle('over', frac > 1);
-    $('progress').classList.toggle('past-min', !!a.minMin && ms >= a.minMin * 60000);
+    const pastMin = !!a.minMin && ms >= a.minMin * 60000;
+    $('progress').classList.toggle('past-min', pastMin);
+    const note = frac >= 1 ? '기본 시간을 채웠어요' : pastMin ? '최소 시간을 채웠어요' : '';
+    const noteEl = $('activeNote');
+    if (noteEl.textContent !== note) {
+      noteEl.textContent = note;
+      noteEl.hidden = !note;
+      if (note) $('timerLive').textContent = note;
+    }
     const mins = Math.floor(ms / 60000);
     if (mins !== lastAnnounced) {
       lastAnnounced = mins;
@@ -915,7 +932,6 @@
     const sit = situationButtons(L);
     if (sit) nodes.push(sit);
     nodes.push(todayRoutines(infos, shownId));
-    if (todays.length) nodes.push(fixedChips(todays, L.nowMin));
     box.replaceChildren(...nodes);
     updateTaskHint();
   }
@@ -1149,16 +1165,6 @@
         h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r), 'aria-label': q(r.name) + ' 시작' }, '시작')));
     if (ui.panel && ui.panel.routineId === r.id && ui.panel.where === 'today') li.append(routinePanel(r));
     return li;
-  }
-
-  /* 오늘 고정 일정: 회색 칩. 루틴(청록 동그라미)과 모양·색이 다르다 */
-  function fixedChips(todays, nowMin) {
-    return h('section', { class: 'section', 'aria-labelledby': 'fixedH' },
-      h('h3', { id: 'fixedH', class: 'muted-h' }, '오늘 고정 일정'),
-      h('ul', { class: 'fixed-chips' }, todays.map((b) => h('li', { class: 'fchip' + (C.toMin(b.end) <= nowMin ? ' past' : '') },
-        h('span', { class: 'sq', 'aria-hidden': 'true' }),
-        h('span', { class: 'num' }, b.start), ' ' + b.name,
-        h('span', { class: 'sr-only' }, ' (' + b.kind + ', ' + b.end + '까지' + (C.toMin(b.end) <= nowMin ? ', 지남' : '') + ')')))));
   }
 
   function openPanel(routineId, mode) {
@@ -2396,9 +2402,14 @@
     const form = h('form', { class: 'panel rec-edit', novalidate: true },
       h('div', { class: 'grid2' },
         h('div', { class: 'field' },
+          h('label', { for: 'eStart' }, '시작 시각'),
+          h('input', { id: 'eStart', type: 'time', value: clockText(r.startedAt), 'aria-describedby': 'eStartErr' }),
+          h('p', { class: 'err', id: 'eStartErr' })),
+        h('div', { class: 'field' },
           h('label', { for: 'eAct' }, '실제 시간 (분)'),
           h('input', { id: 'eAct', inputmode: 'numeric', autocomplete: 'off', value: String(r.actualMin), 'aria-describedby': 'eActErr' }),
-          h('p', { class: 'err', id: 'eActErr' })),
+          h('p', { class: 'err', id: 'eActErr' }))),
+      h('div', { class: 'grid2' },
         h('div', { class: 'field' },
           h('label', { for: 'eEst' }, '예상 시간 (분)'),
           h('input', { id: 'eEst', inputmode: 'numeric', autocomplete: 'off', value: String(r.estimateMin), 'aria-describedby': 'eEstErr' }),
@@ -2414,16 +2425,23 @@
     form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       clearErrs(form);
-      const errs = [setErr('eAct', C.checkMinutes($('eAct').value)), setErr('eEst', C.checkMinutes($('eEst').value))];
+      const errs = [setErr('eStart', isNaN(C.toMin($('eStart').value)) ? '시작 시각을 골라 주세요' : ''),
+        setErr('eAct', C.checkMinutes($('eAct').value)), setErr('eEst', C.checkMinutes($('eEst').value))];
       if (counts && $('eAmt').value.trim() !== '') errs.push(setErr('eAmt', C.checkAmount($('eAmt').value)));
       if (focusFirst(errs)) return;
       r.actualMin = Number($('eAct').value);
       r.estimateMin = Number($('eEst').value);
       if (counts) r.amount = $('eAmt').value.trim() ? Number($('eAmt').value) : null;
+      // 시작 시각: 앱 안의 같은 날에서 시각만 바꾼다 (하루 끝이 자정을 넘으면 그 전 시각은 다음 날 새벽)
+      const sh = shift();
+      const day = C.startOfDay(new Date(Date.parse(r.startedAt) - sh * 60000));
+      let m = C.toMin($('eStart').value);
+      if (m < sh) m += 1440;
+      r.startedAt = C.atMinutes(day, m).toISOString();
       r.endedAt = new Date(Date.parse(r.startedAt) + r.actualMin * 60000).toISOString();
       r.edited = true;
       ui.editRecord = null;
-      if (commit()) showStatus('info', q(r.name) + ' 기록을 고쳤어요.', '예상 ' + r.estimateMin + '분 → 실제 ' + r.actualMin + '분');
+      if (commit()) showStatus('info', q(r.name) + ' 기록을 고쳤어요.', clockText(r.startedAt) + ' 시작 · 예상 ' + r.estimateMin + '분 → 실제 ' + r.actualMin + '분');
       renderAll();
       focusRecordBtn(r.id);
     });
