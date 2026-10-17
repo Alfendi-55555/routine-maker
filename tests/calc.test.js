@@ -543,3 +543,34 @@ test('규칙 제안: 상황 루틴 실천이 절반 미만이면', () => {
   assert.deepEqual([s.occ, s.hit, s.from, s.to], [5, 1, 10, 5]);
   assert.equal(Calc.suggestions(rs, [r], now, 0).some((x) => x.kind === 'situationLow'), false, 'env 없으면 보지 않음');
 });
+
+// ---------- 최소 시간: 기준선 ----------
+test('최소 시간: 기록할 때의 최소 시간보다 짧으면 한 번으로 세지 않는다', () => {
+  assert.equal(Calc.countsAsDone(rec({ actualMin: 6, minMin: 10 })), false);
+  assert.equal(Calc.countsAsDone(rec({ actualMin: 10, minMin: 10 })), true);
+  // 예전 기록과 늘 같은 분량 루틴(minMin 없음)은 센다
+  assert.equal(Calc.countsAsDone(rec({ actualMin: 3 })), true);
+  assert.equal(Calc.countsAsDone(rec({ actualMin: 3, version: 'min' })), true);
+});
+
+test('최소 시간: 짧은 기록은 이번 주 횟수와 오늘 한 일에서 빠진다', () => {
+  const now = new Date(2026, 9, 14, 20, 0);
+  const records = [rec({ actualMin: 4, minMin: 10 })];
+  assert.equal(Calc.weekDone(records, 'r1', now, 0), 0);
+  assert.equal(Calc.doneOn(records, 'r1', new Date(2026, 9, 14), 0), false);
+  records.push(rec({ actualMin: 12, minMin: 10, startedAt: iso(2026, 10, 14, 15) }));
+  assert.equal(Calc.weekDone(records, 'r1', now, 0), 1);
+});
+
+test('저장 검사: 루틴 색과 기록의 최소 시간', () => {
+  const d = Store.empty();
+  d.routines.push({ id: 'r1', name: 'a', category: '공부', perWeek: 3, baseMin: 30, minMin: 10, anchor: null,
+    measure: { type: 'none' }, createdAt: iso(2026, 10, 1), color: 'blue' });
+  d.records.push(rec({ minMin: 10 }));
+  assert.equal(Store.validate(d), true);
+  d.routines[0].color = 'neon';
+  assert.equal(Store.validate(d), false);
+  d.routines[0].color = 'blue';
+  d.records[0].minMin = -1;
+  assert.equal(Store.validate(d), false);
+});

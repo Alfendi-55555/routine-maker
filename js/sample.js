@@ -25,18 +25,18 @@
       { id: 'b_s5', name: '카페 알바', kind: '알바', days: [5, 6], start: '14:00', end: '19:00' }
     ];
     var routines = [
-      { id: 'r_s1', name: '자료구조 복습', category: '복습', perWeek: null, baseMin: 45, minMin: 15,
+      { id: 'r_s1', color: 'blue', name: '자료구조 복습', category: '복습', perWeek: null, baseMin: 45, minMin: 15,
         anchor: { type: 'block', blockId: 'b_s1' }, measure: { type: 'count', unit: '장' }, createdAt: created },
-      { id: 'r_s2', name: '영어 단어 100개', category: '공부', perWeek: null, days: [0, 1, 2, 3, 4, 5, 6], baseMin: 30, minMin: 10,
+      { id: 'r_s2', color: 'orange', name: '영어 단어 100개', category: '공부', perWeek: null, days: [0, 1, 2, 3, 4, 5, 6], baseMin: 30, minMin: 10,
         anchor: { type: 'time', time: '22:00' }, measure: { type: 'fixed', amount: 100, unit: '개' }, createdAt: created },
-      { id: 'r_s3', name: '팀플 회의록 정리', category: '팀플', perWeek: 1, baseMin: 40, minMin: 15,
+      { id: 'r_s3', color: 'purple', name: '팀플 회의록 정리', category: '팀플', perWeek: 1, baseMin: 40, minMin: 15,
         anchor: null, measure: { type: 'none' }, createdAt: created },
       // 상황 루틴: 다른 루틴을 끝내면 / 쉬는 날이면 / 내가 알려 주는 상황
-      { id: 'r_s4', name: '하루 3줄 일기', category: '기록', perWeek: null, baseMin: 10, minMin: 3,
+      { id: 'r_s4', color: 'pink', name: '하루 3줄 일기', category: '기록', perWeek: null, baseMin: 10, minMin: 3,
         anchor: { type: 'routine', routineId: 'r_s2' }, measure: { type: 'fixed', amount: 3, unit: '줄' }, createdAt: created },
-      { id: 'r_s5', name: '방 정리', category: '생활', perWeek: null, baseMin: 20, minMin: 10,
+      { id: 'r_s5', color: 'lime', name: '방 정리', category: '생활', perWeek: null, baseMin: 20, minMin: 10,
         anchor: { type: 'dayoff' }, measure: { type: 'none' }, createdAt: created },
-      { id: 'r_s6', name: '정리 10분', category: '생활', perWeek: null, baseMin: 10, minMin: 5,
+      { id: 'r_s6', color: 'sky', name: '정리 10분', category: '생활', perWeek: null, baseMin: 10, minMin: 5,
         anchor: { type: 'situation', label: '집 도착' }, measure: { type: 'none' }, createdAt: created }
     ];
     var events = [], en = 0;
@@ -49,11 +49,10 @@
 
       // 영어 단어: 매일 밤 10시. 시간이 지날수록 시작 지연과 수행 시간이 조금씩 줄어든다
       if (rnd() < 0.82) {
-        var minVer = rnd() < 0.12;
-        var act = minVer ? Math.round(9 + rnd() * 4) : Math.round(42 - 14 * p + (rnd() - 0.5) * 8);
+        var act = Math.round(42 - 14 * p + (rnd() - 0.5) * 8);
         var s = at(day, '22:00', Math.round(35 - 25 * p + rnd() * 10));
         push(Object.assign({ kind: 'routine', routineId: 'r_s2', name: '영어 단어 100개', category: '공부',
-          version: minVer ? 'min' : 'base', estimateMin: minVer ? 10 : 30, actualMin: act, amount: minVer ? null : 100,
+          version: 'base', estimateMin: 30, actualMin: act, amount: 100,
           plannedStartAt: at(day, '22:00').toISOString(), source: 'timer' }, span(s, act)));
       }
       // 하루 3줄 일기: 영어 단어를 끝낸 날, 끝내고 조금 뒤에
@@ -68,7 +67,7 @@
       if (wd === 0 && rnd() < 0.7) {
         var est5 = 20, act5 = Math.round(est5 * (1.2 + rnd() * 0.5));
         push(Object.assign({ kind: 'routine', routineId: 'r_s5', name: '방 정리', category: '생활',
-          version: 'base', estimateMin: est5, actualMin: act5, amount: null, plannedStartAt: null, source: 'timer' },
+          version: 'base', estimateMin: est5, minMin: 10, actualMin: act5, amount: null, plannedStartAt: null, source: 'timer' },
           span(at(day, '15:00', Math.round(rnd() * 60)), act5)));
       }
       // 집 도착: 월~목 하교 뒤 상황 버튼을 누르고, 대부분 바로 정리
@@ -77,9 +76,10 @@
         en += 1;
         events.push({ id: 'e_s' + en, label: '집 도착', at: arrive.toISOString() });
         if (rnd() < 0.8) {
-          var act6 = Math.round(8 + rnd() * 7);
+          // 가끔은 최소 5분도 못 채우고 끝낸다 → 기록만 남고 세지 않음
+          var act6 = rnd() < 0.1 ? 3 : Math.round(8 + rnd() * 7);
           push(Object.assign({ kind: 'routine', routineId: 'r_s6', name: '정리 10분', category: '생활',
-            version: 'base', estimateMin: 10, actualMin: act6, amount: null, plannedStartAt: arrive.toISOString(), source: 'timer' },
+            version: 'base', estimateMin: 10, minMin: 5, actualMin: act6, amount: null, plannedStartAt: arrive.toISOString(), source: 'timer' },
             span(new Date(arrive.getTime() + Math.round(2 + rnd() * 14) * 60000), act6)));
         }
       }
@@ -90,7 +90,7 @@
         var s2 = at(day, '11:45', Math.round(45 - 30 * p + rnd() * 10));
         var manual = rnd() < 0.15;
         push(Object.assign({ kind: 'routine', routineId: 'r_s1', name: '자료구조 복습', category: '복습',
-          version: 'base', estimateMin: 45, actualMin: act2, amount: slides,
+          version: 'base', estimateMin: 45, minMin: 15, actualMin: act2, amount: slides,
           plannedStartAt: manual ? null : at(day, '11:45').toISOString(), source: manual ? 'manual' : 'timer' }, span(s2, act2)));
       }
       // 팀플 회의록: 목요일 저녁. 셀 수 없는 일이라 그날 예상을 적는다
@@ -98,7 +98,7 @@
         var est = 30 + Math.round(rnd() * 4) * 5;
         var act3 = Math.round(est * (1.7 - 0.4 * p + (rnd() - 0.5) * 0.2));
         push(Object.assign({ kind: 'routine', routineId: 'r_s3', name: '팀플 회의록 정리', category: '팀플',
-          version: 'base', estimateMin: est, actualMin: act3, amount: null, plannedStartAt: null, source: 'timer' },
+          version: 'base', estimateMin: est, minMin: 15, actualMin: act3, amount: null, plannedStartAt: null, source: 'timer' },
           span(at(day, '20:00', Math.round(rnd() * 30)), act3)));
       }
     }

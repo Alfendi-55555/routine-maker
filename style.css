@@ -169,6 +169,10 @@ legend { padding: 0 4px; }
 .progress { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; position: relative; }
 .progress > span { position: absolute; inset: 0 auto 0 0; background: var(--accent); width: 0; }
 .progress.over > span { background: var(--warn); }
+/* 최소 시간 눈금: 넘기면 한 번으로 센다 */
+.progress > i { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); border-radius: 1px; }
+.progress { overflow: visible; }
+.progress > span { border-radius: 4px; }
 .meta { color: var(--muted); font-size: 0.88rem; }
 .subform, .confirm { border-top: 1px solid var(--line); padding-top: 12px; }
 .confirm { display: grid; gap: 10px; }

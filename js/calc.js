@@ -181,7 +181,7 @@
   }
   function predict(planMin, cal) { return cal ? round5(planMin * cal.ratio) : planMin; }
 
-  /* 'fits' 들어가요 / 'min' 최소 버전만 / 'tight' 빠듯해요 */
+  /* 'fits' 들어가요 / 'min' 최소 시간만큼만 / 'tight' 빠듯해요 */
   function fit(predBase, predMin, avail) {
     if (avail >= predBase) return 'fits';
     if (avail >= predMin) return 'min';
@@ -235,10 +235,14 @@
   /* 모든 날짜 계산은 앱 안의 하루 기준. shift(분)만큼 시각을 당겨서 본다. */
   function shifted(d, shift) { return new Date(new Date(d).getTime() - (shift || 0) * 60000); }
 
+  /* 한 번으로 세는 기록인지: 기록할 때의 최소 시간(minMin)을 넘겼으면 센다.
+   * minMin이 없는 기록(예전 기록, 늘 같은 분량을 끝낸 기록)은 센다 */
+  function countsAsDone(rec) { return rec.minMin == null || rec.actualMin >= rec.minMin; }
+
   function daysDone(records, routineId, from, to, shift) {
     var set = {};
     records.forEach(function (r) {
-      if (r.routineId !== routineId) return;
+      if (r.routineId !== routineId || !countsAsDone(r)) return;
       var t = Date.parse(r.startedAt) - (shift || 0) * 60000;
       if (t >= from.getTime() && t < to.getTime()) set[dayKey(t)] = true;
     });
@@ -325,7 +329,7 @@
   function doneDays(records, routineId, from, to, shift) {
     var set = {};
     records.forEach(function (r) {
-      if (r.routineId !== routineId) return;
+      if (r.routineId !== routineId || !countsAsDone(r)) return;
       var t = Date.parse(r.startedAt) - (shift || 0) * 60000;
       if (t >= from.getTime() && t < to.getTime()) set[dayKey(t)] = true;
     });
@@ -485,7 +489,7 @@
             to: r.days.filter(function (d) { return d !== worst.day; }) });
         }
       }
-      // 상황 루틴: 지난 4주 실천이 절반 미만이면 (상황 4번 이상) 최소 버전을 줄이거나 시작 신호를 바꿔 보자고
+      // 상황 루틴: 지난 4주 실천이 절반 미만이면 (상황 4번 이상) 최소 시간을 줄이거나 시작 신호를 바꿔 보자고
       if (isSituation(r) && env) {
         var full = Object.assign({ records: records, now: now, shift: shift }, env);
         var ws4 = addDays(startOfWeek(shifted(now, shift)), -28);
@@ -496,7 +500,7 @@
             from: r.minMin, to: smaller && smaller < r.minMin ? smaller : null });
         }
       }
-      var base = records.filter(function (x) { return x.routineId === r.id && x.version !== 'min'; }).sort(byStart).slice(-5);
+      var base = records.filter(function (x) { return x.routineId === r.id && x.version !== 'min' && countsAsDone(x); }).sort(byStart).slice(-5);
       if (base.length >= 5) {
         var med = median(base.map(function (x) { return x.actualMin; }));
         var next = round5(med);
@@ -555,7 +559,7 @@
   }
 
   /* 루틴 수행 시간 관찰. 유형에 따라 비교 기준을 바꾼다.
-   * fixed: 분 (최소 버전 제외) / count: 단위당 분 / none: 배율 */
+   * fixed: 분 (예전 최소 버전 기록 제외) / count: 단위당 분 / none: 배율 */
   function observeDuration(records, routine) {
     var rs = records.filter(function (r) { return r.routineId === routine.id; }).sort(byStart);
     var type = routine.measure.type, values;
@@ -653,7 +657,7 @@
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,
     ratioOf: ratioOf, calibration: calibration, predict: predict, fit: fit, categoryStats: categoryStats,
     anchorToday: anchorToday, pickGap: pickGap,
-    weekDone: weekDone, doneOn: doneOn, lastWeeks: lastWeeks, missedYesterday: missedYesterday, weekTight: weekTight,
+    weekDone: weekDone, doneOn: doneOn, countsAsDone: countsAsDone, lastWeeks: lastWeeks, missedYesterday: missedYesterday, weekTight: weekTight,
     actualMinutes: actualMinutes, delayMinutes: delayMinutes, compareHalves: compareHalves,
     observeDuration: observeDuration, observeDelay: observeDelay, durationSentence: durationSentence, delaySentence: delaySentence,
     checkName: checkName, checkCategory: checkCategory, checkMinutes: checkMinutes, checkAmount: checkAmount,

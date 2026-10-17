@@ -45,11 +45,18 @@
     <h2 id="activeTitle" tabindex="-1"></h2>
     <p class="timer num" id="timer" aria-hidden="true">00:00</p>
     <p class="sr-only" id="timerLive" aria-live="polite"></p>
-    <div class="progress" id="progress" aria-hidden="true"><span id="progressBar"></span></div>
+    <div class="progress" id="progress" aria-hidden="true"><span id="progressBar"></span><i id="progressMin" title="최소 시간" hidden></i></div>
     <p class="meta" id="activeMeta"></p>
     <div class="row" id="activeButtons">
       <button type="button" class="btn primary" id="btnFinish">끝냈어요</button>
       <button type="button" class="btn" id="btnAbandon">기록 없이 그만두기</button>
+    </div>
+    <div class="confirm" id="shortConfirm" hidden>
+      <p id="shortText"></p>
+      <div class="row">
+        <button type="button" class="btn primary" id="btnShortNo">조금 더 하기</button>
+        <button type="button" class="btn" id="btnShortYes">그래도 끝내기</button>
+      </div>
     </div>
     <form id="finishForm" class="subform" hidden novalidate>
       <div class="field" id="finishAmountField">
@@ -236,9 +243,9 @@
                 <p class="err" id="rBaseErr"></p>
               </div>
               <div class="field">
-                <label for="rMin">최소 버전 (분)</label>
+                <label for="rMin">최소 시간 (분)</label>
                 <input id="rMin" inputmode="numeric" autocomplete="off" placeholder="10" aria-describedby="rMinHint rMinErr">
-                <p class="hint" id="rMinHint">바쁜 날 이만큼이라도 하면 지킨 걸로 쳐요.</p>
+                <p class="hint" id="rMinHint">이만큼은 해야 한 번으로 세요. 바쁜 날엔 여기까지만 해도 돼요. 늘 같은 분량인 루틴은 분량을 끝내면 세요.</p>
                 <p class="err" id="rMinErr"></p>
               </div>
             </div>
@@ -497,7 +504,7 @@
           <p class="g-eg">오늘 탭의 "다른 활동 기록하기"</p></div>
       </li>
     </ul>
-    <p class="sub">모든 루틴은 바쁜 날을 위한 최소 버전을 둘 수 있고, 최소 버전도 지킨 것으로 세요.</p>
+    <p class="sub">모든 루틴에는 최소 시간이 있어요. 타이머가 최소 시간을 넘기면 한 번으로 세고, 그보다 짧게 끝내면 기록만 남아요. 늘 같은 분량인 루틴은 분량을 끝내면 세요.</p>
   </div>
 </dialog>
 

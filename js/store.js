@@ -8,6 +8,8 @@
   var KEY = 'routinemaker.v1';
   var BACKUP_KEY = 'routinemaker.v1.damaged';
   var TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+  /* 루틴 색 (화면의 색 이름과 같은 순서) */
+  var COLORS = ['blue', 'orange', 'purple', 'pink', 'lime', 'sky', 'mustard', 'brown'];
 
   function empty() {
     return {
@@ -70,13 +72,16 @@
       ((r.perWeek == null && isSituationAnchor(r.anchor)) || validDays(r.days) || (Number.isInteger(r.perWeek) && r.perWeek >= 1 && r.perWeek <= 7)) &&
       (r.days == null || validDays(r.days)) &&
       isPos(r.baseMin, 720) && isPos(r.minMin, 720) && r.minMin < r.baseMin &&
-      validAnchor(r.anchor) && validMeasure(r.measure) && isDate(r.createdAt);
+      validAnchor(r.anchor) && validMeasure(r.measure) && isDate(r.createdAt) &&
+      (r.color == null || COLORS.indexOf(r.color) !== -1);
   }
   function validEntry(e, finished) {
     if (!e || !isStr(e.id) || (e.kind !== 'routine' && e.kind !== 'task')) return false;
     if (!isStr(e.name, 50) || !isStr(e.category, 20) || !isPos(e.estimateMin, 720) || !isDate(e.startedAt)) return false;
     if (e.kind === 'routine' && (!isStr(e.routineId) || (e.version !== 'base' && e.version !== 'min'))) return false;
     if (e.plannedStartAt != null && !isDate(e.plannedStartAt)) return false;
+    // 기록할 때의 최소 시간 (이보다 짧으면 한 번으로 세지 않음, 없어도 됨)
+    if (e.minMin != null && !isPos(e.minMin, 720)) return false;
     if (!finished) return true;
     if (!isPos(e.actualMin) || !isDate(e.endedAt)) return false;
     if (e.amount != null && !isPos(e.amount)) return false;
@@ -126,7 +131,7 @@
     return validate(d) ? { ok: true, data: d } : { ok: false };
   }
 
-  var Store = { KEY: KEY, BACKUP_KEY: BACKUP_KEY, empty: empty, validate: validate, load: load, save: save, parseImport: parseImport };
+  var Store = { KEY: KEY, COLORS: COLORS, BACKUP_KEY: BACKUP_KEY, empty: empty, validate: validate, load: load, save: save, parseImport: parseImport };
 
   if (typeof module === 'object' && module.exports) module.exports = Store;
   else root.Store = Store;

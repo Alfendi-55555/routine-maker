@@ -17,7 +17,7 @@
   let state = S.empty();
   const ui = {
     tab: 'today',
-    panel: null,          // 오늘 탭 루틴 항목 안의 작은 입력칸 { routineId, mode: 'start'|'manual', version }
+    panel: null,          // 루틴 항목 안의 작은 입력칸 { routineId, mode: 'start'|'manual' }
     filter: '전체',
     showAll: false,
     editBlock: null,
@@ -291,7 +291,7 @@
       h('div', { class: 'obs' }, h('span', { class: 'label' }, '기록'),
         recs.length
           ? h('ul', { class: 'plain' }, recs.map((r) => h('li', { class: 'gap-row' },
-            h('span', null, h('span', { class: 'num' }, clockText(r.startedAt)), ' ' + r.name + (r.version === 'min' ? ' (최소)' : '')),
+            h('span', null, h('span', { class: 'num' }, clockText(r.startedAt)), ' ' + r.name + (r.version === 'min' ? ' (최소)' : '') + (C.countsAsDone(r) ? '' : ' (최소 미만)')),
             h('span', { class: 'num' }, r.actualMin + '분'))))
           : h('p', { class: 'sub' }, '이날 기록이 없어요.')));
   }
@@ -441,11 +441,15 @@
       $('activeButtons').hidden = false;
       return;
     }
-    $('activeKind').textContent = a.kind === 'routine'
-      ? (a.version === 'min' ? '하는 중 · 루틴 최소 버전' : '하는 중 · 루틴')
-      : '하는 중 · 다른 활동';
+    $('activeKind').textContent = a.kind === 'routine' ? '하는 중 · 루틴' : '하는 중 · 다른 활동';
     $('activeTitle').textContent = a.name;
     const bits = [a.category, '예상 ' + a.estimateMin + '분', clockText(a.startedAt) + ' 시작'];
+    if (a.minMin) bits.push('최소 ' + a.minMin + '분');
+    // 막대 위 최소 시간 눈금: 여기를 넘기면 한 번으로 센다
+    const tick = $('progressMin');
+    tick.hidden = !a.minMin;
+    if (a.minMin) tick.style.left = Math.min(100, a.minMin / a.estimateMin * 100) + '%';
+    $('shortConfirm').hidden = true;
     const delay = C.delayMinutes(a.plannedStartAt, a.startedAt);
     if (delay != null) bits.push('앵커 ' + delay + '분 뒤 시작');
     $('activeMeta').textContent = bits.join(' · ');
@@ -463,6 +467,7 @@
     const frac = ms / (a.estimateMin * 60000);
     $('progressBar').style.width = Math.min(100, frac * 100) + '%';
     $('progress').classList.toggle('over', frac > 1);
+    $('progress').classList.toggle('past-min', !!a.minMin && ms >= a.minMin * 60000);
     const mins = Math.floor(ms / 60000);
     if (mins !== lastAnnounced) {
       lastAnnounced = mins;
@@ -483,8 +488,23 @@
     };
   }
 
+  /* 최소 시간보다 짧게 끝내려 하면 한 번 묻는다. 그래도 끝내면 기록은 남고 횟수·연속에는 세지 않는다 */
   function onFinishClick() {
-    if (!state.active) return;
+    const a = state.active;
+    if (!a) return;
+    const elapsed = C.diffMin(a.startedAt, new Date());
+    if (a.minMin && elapsed < a.minMin) {
+      $('shortText').textContent = '아직 최소 ' + a.minMin + '분이 안 됐어요 (지금 ' + Math.max(1, Math.floor(elapsed)) + '분). ' +
+        '지금 끝내면 기록은 남지만 이번 횟수와 연속에는 세지 않아요.';
+      $('activeButtons').hidden = true;
+      $('shortConfirm').hidden = false;
+      $('btnShortNo').focus();
+      return;
+    }
+    proceedFinish();
+  }
+  function proceedFinish() {
+    $('shortConfirm').hidden = true;
     const need = needsForFinish();
     if (!need.amount && !need.actual) { finish({}); return; }
     clearErrs($('finishForm'));
@@ -517,12 +537,15 @@
     });
   }
 
-  function amountFor(routine, version, entered) {
+  /* 늘 같은 분량인 루틴은 끝내면 그 분량을 한 것으로 본다 */
+  function amountFor(routine, entered) {
     if (!routine) return null;
     if (routine.measure.type === 'count') return entered || null;
-    if (routine.measure.type === 'fixed') return version === 'base' ? routine.measure.amount : null;
+    if (routine.measure.type === 'fixed') return routine.measure.amount;
     return null;
   }
+  /* 기록에 남길 최소 시간: 늘 같은 분량인 루틴은 분량을 끝내면 한 번이라 시간으로 세지 않는다 */
+  function minFor(routine) { return routine && routine.measure.type !== 'fixed' ? routine.minMin : null; }
 
   function finish(opts) {
     const a = state.active;
@@ -535,10 +558,11 @@
     const rec = {
       id: a.id, kind: a.kind, routineId: a.routineId || null, name: a.name, category: a.category,
       version: a.version || null, estimateMin: a.estimateMin, actualMin: actual,
-      amount: amountFor(routine, a.version, opts.amount),
+      amount: amountFor(routine, opts.amount),
       plannedStartAt: a.plannedStartAt || null,
       startedAt: a.startedAt, endedAt: endedAt.toISOString(), source: 'timer'
     };
+    if (a.minMin) rec.minMin = a.minMin;
     state.records.push(rec);
     state.active = null;
     if (commit()) showStatus('info', q(rec.name) + ' 기록했어요. 실제 ' + actual + '분 걸렸어요.', recordSummary(rec, routine));
@@ -548,6 +572,7 @@
 
   function recordSummary(rec, routine) {
     const bits = [];
+    if (!C.countsAsDone(rec)) bits.push('최소 ' + rec.minMin + '분보다 짧아서 이번 횟수와 연속에는 세지 않았어요');
     if (routine && C.isSituation(routine)) {
       const wk = C.situationWeek(routine, sitEnv());
       bits.push(sitWeekText(wk.occ, wk.hit));
@@ -581,6 +606,12 @@
     $('btnFinish').addEventListener('click', onFinishClick);
     $('finishForm').addEventListener('submit', (ev) => onFinishSubmit(ev, false));
     $('btnSkipAmount').addEventListener('click', () => onFinishSubmit(null, true));
+    $('btnShortNo').addEventListener('click', () => {
+      $('shortConfirm').hidden = true;
+      $('activeButtons').hidden = false;
+      $('btnFinish').focus();
+    });
+    $('btnShortYes').addEventListener('click', proceedFinish);
     $('btnFinishBack').addEventListener('click', () => {
       $('finishForm').hidden = true;
       $('activeButtons').hidden = false;
@@ -736,7 +767,7 @@
     updateTaskHint();
   }
 
-  const FIT_LONG = { fits: '남은 시간 안에 끝나요', min: '최소 버전만 끝낼 수 있어요', tight: '시간이 모자라요', nogap: '오늘 남은 빈 시간이 없어요' };
+  const FIT_LONG = { fits: '남은 시간 안에 끝나요', min: '최소 시간만큼은 할 수 있어요', tight: '시간이 모자라요', nogap: '오늘 남은 빈 시간이 없어요' };
   const FIT_SHORT = { fits: '시간 충분', min: '최소만 가능', tight: '시간 부족', nogap: '빈 시간 없음' };
 
   /* 지금: 크림색 한 줄. 빈 시간이면 남은 시간에 끝낼 수 있는 루틴 하나와 시작 버튼 */
@@ -768,20 +799,17 @@
       return { node: card, shownId: null };
     }
     const r = pick.r;
-    const version = pick.nowFit === 'fits' ? 'base' : 'min';
     card.id = 'ti-' + r.id;
     card.append(
       h('div', { class: 'now-row' },
         h('span', { class: 'dot routine', 'aria-hidden': 'true' }),
         h('div', { class: 'now-main' },
           h('span', { class: 'now-name' }, r.name),
-          h('span', { class: 'now-meta' }, '약 ' + (version === 'base' ? pick.predBase : pick.predMin) + '분' +
+          h('span', { class: 'now-meta' }, '약 ' + pick.predBase + '분 · 최소 ' + r.minMin + '분' +
             (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.missed ? ' · 하면 ' + streakText(pick.streak) + '이 이어져요' : ''))),
-        h('button', { type: 'button', class: 'btn primary start-btn', onclick: () => onStartRoutine(r, version) },
-          version === 'base' ? '시작' : '최소 버전 시작')),
+        h('button', { type: 'button', class: 'btn primary start-btn', onclick: () => onStartRoutine(r) }, '시작')),
       h('div', { class: 'now-foot' },
-        h('span', { class: 'fit-chip ' + pick.nowFit }, FIT_LONG[pick.nowFit]),
-        version === 'base' ? h('button', { type: 'button', class: 'link-btn', onclick: () => onStartRoutine(r, 'min') }, '최소 버전 ' + r.minMin + '분') : null));
+        h('span', { class: 'fit-chip ' + pick.nowFit }, FIT_LONG[pick.nowFit])));
     if (ui.panel && ui.panel.routineId === r.id) card.append(routinePanel(r));
     return { node: card, shownId: r.id };
   }
@@ -851,7 +879,7 @@
       h('h3', { id: 'todayRoutinesH' }, '오늘 남은 루틴'));
     if (!state.routines.length) {
       sec.append(emptyBox('루틴이 없어요.',
-        '주 1회처럼 작게 하나 만들어 보세요. 시작 신호(앵커)와 바쁜 날용 최소 버전을 함께 정해요.',
+        '주 1회처럼 작게 하나 만들어 보세요. 시작 신호와 이만큼은 하자는 최소 시간을 함께 정해요.',
         h('button', { type: 'button', class: 'btn', onclick: openNewRoutine }, '루틴 만들기')));
       return sec;
     }
@@ -902,7 +930,7 @@
     const r = info.r;
     const open = ui.more === r.id || (ui.panel && ui.panel.routineId === r.id);
     const notes = [];
-    if (info.missed) notes.push((C.scheduleOf(r) === 'weekly' ? '이번 주에 채우면 ' : '오늘 하면 ') + streakText(info.streak) + '이 이어져요 · 최소 버전도 괜찮아요');
+    if (info.missed) notes.push((C.scheduleOf(r) === 'weekly' ? '이번 주에 채우면 ' : '오늘 하면 ') + streakText(info.streak) + '이 이어져요 · 최소 ' + r.minMin + '분만 해도 돼요');
     if (info.tight) notes.push('이번 주 ' + info.tight.left + '번 남았는데 ' + info.tight.daysLeft + '일 남았어요');
     if (info.since != null) notes.push(sinceText(info));
     const li = h('li', { class: 'rrow' + (info.missed || info.tight ? ' flagged' : ''), id: 'ti-' + r.id },
@@ -913,7 +941,7 @@
           h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 약 ' + info.predBase + '분 · ' + weekText(info) + (info.streak.current ? ' · ' + streakText(info.streak) : '')),
           notes.length ? h('span', { class: 'rrow-note' }, notes.join(' · ')) : null),
         h('span', { class: 'fit-word ' + info.fit }, FIT_SHORT[info.fit]),
-        h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r, 'base'), 'aria-label': q(r.name) + ' 시작' }, '시작'),
+        h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r), 'aria-label': q(r.name) + ' 시작' }, '시작'),
         h('button', {
           type: 'button', class: 'more-btn', 'aria-expanded': String(!!open), 'aria-label': q(r.name) + ' 더보기',
           onclick: () => { ui.more = ui.more === r.id ? null : r.id; if (ui.panel && ui.panel.routineId === r.id) ui.panel = null; renderToday(); const b = document.querySelector('#ti-' + CSS.escape(r.id) + ' .more-btn'); if (b) b.focus(); }
@@ -927,8 +955,7 @@
           : '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분 · 기록이 3개 쌓이면 실제 걸리는 시간으로 보정해 드려요.'),
         fitLine(info),
         h('div', { class: 'row' },
-          h('button', { type: 'button', class: 'btn small', onclick: () => onStartRoutine(r, 'min') }, '최소 버전 · ' + r.minMin + '분'),
-          h('button', { type: 'button', class: 'btn small ghost', onclick: () => openPanel(r.id, 'manual', 'base') }, '타이머 없이 기록'))));
+          h('button', { type: 'button', class: 'btn small ghost', onclick: () => openPanel(r.id, 'manual') }, '타이머 없이 기록'))));
     }
     if (ui.panel && ui.panel.routineId === r.id) li.append(routinePanel(r));
     return li;
@@ -944,8 +971,8 @@
         h('span', { class: 'sr-only' }, ' (' + b.kind + ', ' + b.end + '까지' + (C.toMin(b.end) <= nowMin ? ', 지남' : '') + ')')))));
   }
 
-  function openPanel(routineId, mode, version) {
-    ui.panel = { routineId, mode, version };
+  function openPanel(routineId, mode) {
+    ui.panel = { routineId, mode };
     renderToday();
     const first = document.querySelector('#ti-' + CSS.escape(routineId) + ' .panel input, #ti-' + CSS.escape(routineId) + ' .panel select');
     if (first) first.focus();
@@ -968,11 +995,6 @@
         h('label', { for: 'pDay' }, '언제 했나요?'),
         h('select', { id: 'pDay' }, dayChoices().map((c) => h('option', { value: c.value }, c.label)))));
       fields.push(h('div', { class: 'field' },
-        h('label', { for: 'pVer' }, '어떤 버전으로 했나요?'),
-        h('select', { id: 'pVer' },
-          h('option', { value: 'base', selected: p.version === 'base' }, '기본 (' + r.baseMin + '분)'),
-          h('option', { value: 'min', selected: p.version === 'min' }, '최소 버전 (' + r.minMin + '분)'))));
-      fields.push(h('div', { class: 'field' },
         h('label', { for: 'pAct' }, '실제로 걸린 시간 (분)'),
         h('input', { id: 'pAct', inputmode: 'numeric', autocomplete: 'off', 'aria-describedby': 'pActErr' }),
         h('p', { class: 'err', id: 'pActErr' })));
@@ -980,7 +1002,7 @@
     if (r.measure.type === 'none') {
       fields.push(h('div', { class: 'field' },
         h('label', { for: 'pEst' }, '오늘 예상 시간 (분)'),
-        h('input', { id: 'pEst', inputmode: 'numeric', autocomplete: 'off', value: String(p.version === 'min' ? r.minMin : r.baseMin), 'aria-describedby': 'pEstHint pEstErr' }),
+        h('input', { id: 'pEst', inputmode: 'numeric', autocomplete: 'off', value: String(r.baseMin), 'aria-describedby': 'pEstHint pEstErr' }),
         h('p', { class: 'hint', id: 'pEstHint' }, '셀 수 없는 일이라 그날 내용을 보고 예상을 적어요. 예상과 실제의 차이로 변화를 봐요.'),
         h('p', { class: 'err', id: 'pEstErr' })));
     }
@@ -1002,21 +1024,20 @@
       if ($('pEst')) errs.push(setErr('pEst', C.checkMinutes($('pEst').value)));
       if ($('pAmt') && $('pAmt').value.trim() !== '') errs.push(setErr('pAmt', C.checkAmount($('pAmt').value)));
       if (focusFirst(errs)) return;
-      const version = manual ? $('pVer').value : p.version;
-      const estimate = $('pEst') ? Number($('pEst').value) : (version === 'min' ? r.minMin : r.baseMin);
-      if (manual) saveManualRoutine(r, version, Number($('pAct').value), $('pAmt') && $('pAmt').value.trim() ? Number($('pAmt').value) : null, estimate, Number($('pDay').value));
-      else startRoutine(r, version, estimate);
+      const estimate = $('pEst') ? Number($('pEst').value) : r.baseMin;
+      if (manual) saveManualRoutine(r, Number($('pAct').value), $('pAmt') && $('pAmt').value.trim() ? Number($('pAmt').value) : null, estimate, Number($('pDay').value));
+      else startRoutine(r, estimate);
     });
     return form;
   }
 
-  function onStartRoutine(r, version) {
+  function onStartRoutine(r) {
     if (state.active) { blockedByActive(); return; }
-    if (r.measure.type === 'none') { openPanel(r.id, 'start', version); return; }
-    startRoutine(r, version, version === 'min' ? r.minMin : r.baseMin);
+    if (r.measure.type === 'none') { openPanel(r.id, 'start'); return; }
+    startRoutine(r, r.baseMin);
   }
 
-  function startRoutine(r, version, estimateMin) {
+  function startRoutine(r, estimateMin) {
     if (state.active) { blockedByActive(); return; }
     const now = new Date();
     const L = nowL();
@@ -1027,20 +1048,22 @@
       if (C.delayMinutes(p, now.toISOString()) != null) planned = p;
     }
     state.active = {
-      id: uid('t'), kind: 'routine', routineId: r.id, name: r.name, category: r.category, version,
+      id: uid('t'), kind: 'routine', routineId: r.id, name: r.name, category: r.category, version: 'base',
       estimateMin, plannedStartAt: planned, startedAt: now.toISOString()
     };
+    if (minFor(r)) state.active.minMin = minFor(r);
     ui.panel = null;
-    if (commit()) showStatus('info', q(r.name) + (version === 'min' ? ' 최소 버전' : '') + ' 시작했어요.', '새로고침하거나 탭을 닫아도 시작 시각부터 이어서 계산해요.');
+    if (commit()) showStatus('info', q(r.name) + ' 시작했어요.', (minFor(r) ? '최소 ' + minFor(r) + '분을 넘기면 한 번으로 세요. ' : '') + '새로고침하거나 탭을 닫아도 시작 시각부터 이어서 계산해요.');
     renderAll();
     $('activeTitle').focus();
   }
 
-  function saveManualRoutine(r, version, actual, amount, estimate, daysAgo) {
+  function saveManualRoutine(r, actual, amount, estimate, daysAgo) {
     const rec = Object.assign({
-      id: uid('t'), kind: 'routine', routineId: r.id, name: r.name, category: r.category, version,
-      estimateMin: estimate, actualMin: actual, amount: amountFor(r, version, amount), plannedStartAt: null, source: 'manual'
+      id: uid('t'), kind: 'routine', routineId: r.id, name: r.name, category: r.category, version: 'base',
+      estimateMin: estimate, actualMin: actual, amount: amountFor(r, amount), plannedStartAt: null, source: 'manual'
     }, manualSpan(daysAgo || 0, actual));
+    if (minFor(r)) rec.minMin = minFor(r);
     state.records.push(rec);
     ui.panel = null;
     if (commit()) showStatus('info', q(r.name) + ' ' + (daysAgo ? ['', '어제', '그저께'][daysAgo] + ' 기록으로 ' : '') + '저장했어요. 실제 ' + actual + '분 걸렸어요.', recordSummary(rec, r));
@@ -1473,7 +1496,7 @@
       const baseMsg = C.checkMinutes($('rBase').value);
       errs.push(setErr('rBase', baseMsg));
       let minMsg = C.checkMinutes($('rMin').value);
-      if (!minMsg && !baseMsg && Number($('rMin').value) >= Number($('rBase').value)) minMsg = '최소 버전은 기본보다 짧게 적어 주세요';
+      if (!minMsg && !baseMsg && Number($('rMin').value) >= Number($('rBase').value)) minMsg = '최소 시간은 기본보다 짧게 적어 주세요';
       errs.push(setErr('rMin', minMsg));
 
       const anchorType = getAnchorType();
@@ -1806,13 +1829,13 @@
     } else if (s.kind === 'situationLow') {
       const lead = q(r.name) + '은(는) 지난 4주 동안 상황이 ' + s.occ + '번 생겼는데 ' + s.hit + '번 했어요 (' + anchorPhrase(r) + '). ';
       if (s.to) {
-        v.text = lead + '최소 버전을 ' + s.from + '분에서 ' + s.to + '분으로 줄여 볼까요?';
+        v.text = lead + '최소 시간을 ' + s.from + '분에서 ' + s.to + '분으로 줄여 볼까요?';
         v.apply = '최소 ' + s.to + '분으로 줄이기';
       } else {
         v.text = lead + '시작 신호를 바꿔 보는 건 어때요?';
         v.edit = true;
       }
-      v.why = '상황 루틴의 지난 4주 실천이 절반보다 적을 때(상황이 4번 이상 있었을 때) 제안해요. 최소 버전이 5분보다 길면 절반으로 줄이자고, 이미 짧으면 시작 신호를 바꿔 보자고 해요.';
+      v.why = '상황 루틴의 지난 4주 실천이 절반보다 적을 때(상황이 4번 이상 있었을 때) 제안해요. 최소 시간이 5분보다 길면 절반으로 줄이자고, 이미 짧으면 시작 신호를 바꿔 보자고 해요.';
     } else {
       v.text = q(r.name) + '은(는) 지난 4주 내내 목표를 채웠어요.';
       v.why = '주 몇 번 루틴이 지난 4주 모두 목표를 채웠을 때 알려 드려요. 횟수를 늘리자고는 하지 않아요.';
@@ -1974,7 +1997,7 @@
     }
     sec.append(h('ul', { class: 'plain', id: 'recordList' }, shown.map((r) => {
       const routine = r.routineId ? findRoutine(r.routineId) : null;
-      const kind = r.kind === 'task' ? '다른 활동' : (r.version === 'min' ? '루틴 · 최소' : '루틴');
+      const kind = r.kind === 'task' ? '다른 활동' : (r.version === 'min' ? '루틴 · 최소' : C.countsAsDone(r) ? '루틴' : '루틴 · 최소 미만');
       const amountUnit = routine && routine.measure.unit ? routine.measure.unit : '';
       const label = q(r.name) + ' ' + dateText(r.startedAt);
       const li = h('li', { class: 'rec', id: 'rec-' + r.id },
