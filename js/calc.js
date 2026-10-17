@@ -649,7 +649,7 @@
     MAX_ROLLOVER: MAX_ROLLOVER, dayEndMin: dayEndMin, rolloverMin: rolloverMin, logical: logical, logicalKey: logicalKey,
     checkSettings: checkSettings, suggestions: suggestions, looksTooLong: looksTooLong,
     SITUATION_TYPES: SITUATION_TYPES, routineKind: routineKind, isSituation: isSituation, occurrenceDays: occurrenceDays,
-    situationProgress: situationProgress, situationWeek: situationWeek, situationWeeks: situationWeeks,
+    doneDays: doneDays, situationProgress: situationProgress, situationWeek: situationWeek, situationWeeks: situationWeeks,
     situationMissedYesterday: situationMissedYesterday, situationToday: situationToday, checkSituationLabel: checkSituationLabel,
     scheduleOf: scheduleOf, dayStats: dayStats, streakUnit: streakUnit, opportunities: opportunities, streak: streak,
     DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,

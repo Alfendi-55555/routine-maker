@@ -24,7 +24,8 @@
     editRoutine: null,
     pendingImport: null,
     editRecord: null,     // 고치는 중인 기록 id
-    more: null,           // 오늘 탭에서 '더보기'를 연 루틴 id
+    routine: null,        // 루틴 탭에서 상세로 연 루틴 id (#routine-<id>)
+    editWhere: 'review',  // 기록 고치기 칸을 연 곳: review | detail
     calMonth: null,       // 캘린더에 보이는 달 (그달 1일)
     calSel: null,         // 캘린더에서 고른 날 'YYYY-MM-DD'
     lastMinute: -1
@@ -375,8 +376,9 @@
       tab.tabIndex = on ? 0 : -1;
       $('panel-' + t).hidden = !on;
     });
-    try { if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name); } catch (e) { /* file:// 등 */ }
+    setHash();
     if (name === 'today') renderToday();
+    if (name === 'routines') renderRoutines();
     if (name === 'calendar') renderCalendar();
     if (focusId) {
       const el = $(focusId);
@@ -384,10 +386,21 @@
     }
   }
 
+  function setHash() {
+    const want = ui.tab === 'routines' && ui.routine ? 'routine-' + ui.routine : ui.tab;
+    try { if (location.hash !== '#' + want) history.replaceState(null, '', '#' + want); } catch (e) { /* file:// 등 */ }
+  }
+  function routineFromHash(hash) {
+    return hash.startsWith('routine-') && findRoutine(hash.slice(8)) ? hash.slice(8) : null;
+  }
+
   function bindTabs() {
     const tabs = TABS.map((t) => $('tab-' + t));
     tabs.forEach((tab, i) => {
-      tab.addEventListener('click', () => switchTab(TABS[i]));
+      tab.addEventListener('click', () => {
+        if (TABS[i] === 'routines' && ui.routine) { ui.routine = null; if (ui.panel && ui.panel.where === 'routines') ui.panel = null; }
+        switchTab(TABS[i]);
+      });
       tab.addEventListener('keydown', (ev) => {
         let next = null;
         if (ev.key === 'ArrowRight') next = (i + 1) % TABS.length;
@@ -402,6 +415,8 @@
     });
     window.addEventListener('hashchange', () => {
       const name = location.hash.slice(1);
+      const rid = routineFromHash(name);
+      if (rid) { if (rid !== ui.routine || ui.tab !== 'routines') openRoutine(rid); return; }
       if (TABS.includes(name) && name !== ui.tab) switchTab(name);
     });
   }
@@ -592,6 +607,7 @@
 
   function afterActiveEnds() {
     if (ui.tab === 'today') { const t = $('todayH'); if (t) t.focus(); }
+    else if (ui.tab === 'routines' && $('rdTitle')) $('rdTitle').focus();
     else $('tab-' + ui.tab).focus();
   }
 
@@ -802,15 +818,15 @@
     card.id = 'ti-' + r.id;
     card.append(
       h('div', { class: 'now-row' },
-        h('span', { class: 'dot routine', 'aria-hidden': 'true' }),
+        h('span', { class: 'dot rc ' + rc(r), 'aria-hidden': 'true' }),
         h('div', { class: 'now-main' },
-          h('span', { class: 'now-name' }, r.name),
+          h('button', { type: 'button', class: 'now-name name-link', onclick: () => openRoutine(r.id), 'aria-label': q(r.name) + ' 자세히 보기' }, r.name),
           h('span', { class: 'now-meta' }, '약 ' + pick.predBase + '분 · 최소 ' + r.minMin + '분' +
             (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.missed ? ' · 하면 ' + streakText(pick.streak) + '이 이어져요' : ''))),
         h('button', { type: 'button', class: 'btn primary start-btn', onclick: () => onStartRoutine(r) }, '시작')),
       h('div', { class: 'now-foot' },
         h('span', { class: 'fit-chip ' + pick.nowFit }, FIT_LONG[pick.nowFit])));
-    if (ui.panel && ui.panel.routineId === r.id) card.append(routinePanel(r));
+    if (ui.panel && ui.panel.routineId === r.id && ui.panel.where === 'today') card.append(routinePanel(r));
     return { node: card, shownId: r.id };
   }
 
@@ -834,7 +850,7 @@
     })));
     const marks = infos.filter((i) => i.todo && i.anchor.today && i.anchor.plannedMin != null && i.anchor.plannedMin >= ds && i.anchor.plannedMin <= de);
     const track = h('div', { class: 'tl-track', 'aria-hidden': 'true' },
-      marks.map((i) => h('span', { class: 'tl-mark', style: 'left:' + pct(i.anchor.plannedMin) + '%', title: i.r.name + ' · ' + C.fmtHM(i.anchor.plannedMin) })),
+      marks.map((i) => h('span', { class: 'tl-mark ' + rc(i.r), style: 'left:' + pct(i.anchor.plannedMin) + '%', title: i.r.name + ' · ' + C.fmtHM(i.anchor.plannedMin) })),
       bar,
       nowMin >= ds && nowMin <= de ? h('span', { class: 'tl-now', style: 'left:' + pct(nowMin) + '%' }) : null);
 
@@ -873,7 +889,7 @@
       list);
   }
 
-  /* 오늘 남은 루틴: 한 줄씩. 자세한 내용과 최소 버전·직접 기록은 "더보기" */
+  /* 오늘 남은 루틴: 한 줄씩. 이름을 누르면 루틴 상세 */
   function todayRoutines(infos, shownId) {
     const sec = h('section', { class: 'section', 'aria-labelledby': 'todayRoutinesH' },
       h('h3', { id: 'todayRoutinesH' }, '오늘 남은 루틴'));
@@ -909,14 +925,6 @@
     return '아무 때나';
   }
 
-  function ruleLine(r, anchor) {
-    const p = h('p', { class: 'rule' }, anchorPhrase(r), h('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'),
-      h('span', { class: 'sr-only' }, ' 그러면 '), r.name);
-    if (anchor && anchor.type === 'block' && !anchor.today) p.append(h('span', { class: 'sub' }, ' · 오늘은 ' + (anchor.holiday ? '공휴일이라 ' : '') + q(anchor.block.name) + '이(가) 없는 날'));
-    if (anchor && anchor.type === 'block' && anchor.today) p.append(h('span', { class: 'sub num' }, ' · ' + anchor.block.end));
-    return p;
-  }
-
   function fitLine(info) {
     if (info.fit === 'nogap') return h('p', { class: 'fit-line' }, h('span', { class: 'fit-chip nogap' }, FIT_LONG.nogap));
     const g = info.pick.gap;
@@ -928,36 +936,20 @@
 
   function todayItem(info) {
     const r = info.r;
-    const open = ui.more === r.id || (ui.panel && ui.panel.routineId === r.id);
     const notes = [];
     if (info.missed) notes.push((C.scheduleOf(r) === 'weekly' ? '이번 주에 채우면 ' : '오늘 하면 ') + streakText(info.streak) + '이 이어져요 · 최소 ' + r.minMin + '분만 해도 돼요');
     if (info.tight) notes.push('이번 주 ' + info.tight.left + '번 남았는데 ' + info.tight.daysLeft + '일 남았어요');
     if (info.since != null) notes.push(sinceText(info));
     const li = h('li', { class: 'rrow' + (info.missed || info.tight ? ' flagged' : ''), id: 'ti-' + r.id },
       h('div', { class: 'rrow-line' },
-        h('span', { class: 'dot routine-soft', 'aria-hidden': 'true' }),
+        h('span', { class: 'dot rc ' + rc(r), 'aria-hidden': 'true' }),
         h('div', { class: 'rrow-main' },
-          h('h4', { class: 'rrow-name' }, r.name),
+          h('h4', { class: 'rrow-name' }, h('button', { type: 'button', class: 'name-link', onclick: () => openRoutine(r.id), 'aria-label': q(r.name) + ' 자세히 보기' }, r.name)),
           h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 약 ' + info.predBase + '분 · ' + weekText(info) + (info.streak.current ? ' · ' + streakText(info.streak) : '')),
           notes.length ? h('span', { class: 'rrow-note' }, notes.join(' · ')) : null),
         h('span', { class: 'fit-word ' + info.fit }, FIT_SHORT[info.fit]),
-        h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r), 'aria-label': q(r.name) + ' 시작' }, '시작'),
-        h('button', {
-          type: 'button', class: 'more-btn', 'aria-expanded': String(!!open), 'aria-label': q(r.name) + ' 더보기',
-          onclick: () => { ui.more = ui.more === r.id ? null : r.id; if (ui.panel && ui.panel.routineId === r.id) ui.panel = null; renderToday(); const b = document.querySelector('#ti-' + CSS.escape(r.id) + ' .more-btn'); if (b) b.focus(); }
-        }, open ? '접기' : '더보기')));
-    if (open) {
-      li.append(h('div', { class: 'rrow-more' },
-        ruleLine(r, info.anchor),
-        h('p', { class: 'sub' }, info.cal
-          ? '기록 기준으로 기본은 약 ' + info.predBase + '분, 최소는 약 ' + info.predMin + '분 걸려요 (' +
-            (info.cal.source === 'routine' ? '이 루틴' : q(r.category) + ' 기록') + ', 예상의 ' + info.cal.ratio.toFixed(1) + '배).'
-          : '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분 · 기록이 3개 쌓이면 실제 걸리는 시간으로 보정해 드려요.'),
-        fitLine(info),
-        h('div', { class: 'row' },
-          h('button', { type: 'button', class: 'btn small ghost', onclick: () => openPanel(r.id, 'manual') }, '타이머 없이 기록'))));
-    }
-    if (ui.panel && ui.panel.routineId === r.id) li.append(routinePanel(r));
+        h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r), 'aria-label': q(r.name) + ' 시작' }, '시작')));
+    if (ui.panel && ui.panel.routineId === r.id && ui.panel.where === 'today') li.append(routinePanel(r));
     return li;
   }
 
@@ -972,16 +964,20 @@
   }
 
   function openPanel(routineId, mode) {
-    ui.panel = { routineId, mode };
+    ui.panel = { routineId, mode, where: ui.tab === 'routines' ? 'routines' : 'today' };
     renderToday();
-    const first = document.querySelector('#ti-' + CSS.escape(routineId) + ' .panel input, #ti-' + CSS.escape(routineId) + ' .panel select');
+    renderRoutines();
+    const first = [...document.querySelectorAll('.panel input, .panel select')].find((el) => el.getClientRects().length > 0);
     if (first) first.focus();
   }
   function closePanel(routineId) {
+    const where = ui.panel && ui.panel.where;
     ui.panel = null;
     renderToday();
+    renderRoutines();
+    if (where === 'routines') { const b = $('rdStart') || $('rdTitle'); if (b) b.focus(); return; }
     const item = $('ti-' + routineId);
-    const btn = item && item.querySelector('button');
+    const btn = item && item.querySelector('button.btn');
     if (btn) btn.focus();
   }
 
@@ -1068,7 +1064,7 @@
     ui.panel = null;
     if (commit()) showStatus('info', q(r.name) + ' ' + (daysAgo ? ['', '어제', '그저께'][daysAgo] + ' 기록으로 ' : '') + '저장했어요. 실제 ' + actual + '분 걸렸어요.', recordSummary(rec, r));
     renderAll();
-    $('todayH').focus();
+    ($(ui.tab === 'routines' ? 'rdTitle' : 'todayH') || $('tab-' + ui.tab)).focus();
   }
 
   // ---------- 다른 활동 ----------
@@ -1149,66 +1145,278 @@
     });
   }
 
-  // ========== 루틴 ==========
-  /* 지난 4주를 주별 일수 막대로. 매일 루틴도 "0주 채움"이 아니라 몇 일 했는지가 보이게 */
-  function weeksDots(r) {
-    if (C.isSituation(r)) return situationBars(r);
-    const weeks = C.lastWeeks(state.records, r, new Date(), 4, shift());
-    const counted = weeks.filter((w) => w.state !== 'none');
-    if (!counted.length) return h('span', { class: 'sub' }, '루틴을 만든 지 아직 한 주가 안 됐어요.');
-    const avg = counted.reduce((s, w) => s + w.count, 0) / counted.length;
-    const target = weekTarget(r);
-    const label = '지난 ' + counted.length + '주 평균 주 ' + C.round1(avg) + '일 (목표 ' + goalText(r) + ', 주별 ' +
-      counted.map((w) => w.count).join('·') + '일)';
-    return h('span', { class: 'weekbars-wrap' },
-      h('span', { class: 'weekbars', 'aria-hidden': 'true' }, weeks.map((w) => h('span', { class: 'wb ' + w.state },
-        h('span', { class: 'wb-track' }, h('span', { class: 'wb-fill', style: 'height:' + Math.min(100, w.count / target * 100) + '%' })),
-        h('span', { class: 'wb-num num' }, w.state === 'none' ? '–' : String(w.count))))),
-      h('span', { class: 'sub' }, label));
+  // ---------- 루틴 색 ----------
+  const COLOR_NAMES = { blue: '파랑', orange: '주황', purple: '보라', pink: '분홍', lime: '연두', sky: '하늘', mustard: '겨자', brown: '갈색' };
+  function colorOf(r) { return (r && r.color) || 'blue'; }
+  function rc(r) { return 'rc-' + colorOf(r); }
+  /* 아직 안 쓴 색부터. 다 쓰면 순서대로 다시 */
+  function nextColor(exceptId) {
+    const used = state.routines.filter((x) => x.id !== exceptId).map((x) => x.color);
+    return S.COLORS.find((c) => !used.includes(c)) || S.COLORS[state.routines.length % S.COLORS.length];
   }
 
-  /* 상황 루틴의 지난 4주: 상황이 생긴 날 중 실천한 날 */
-  function situationBars(r) {
-    const weeks = C.situationWeeks(r, sitEnv(), 4);
-    const counted = weeks.filter((w) => w.state !== 'none');
-    if (!counted.length) return h('span', { class: 'sub' }, '루틴을 만든 지 아직 한 주가 안 됐어요.');
-    const occ = counted.reduce((n, w) => n + w.occ, 0), hit = counted.reduce((n, w) => n + w.hit, 0);
-    const label = occ ? '지난 ' + counted.length + '주 동안 상황 ' + occ + '번 중 ' + hit + '번 실천 (' + Math.round(hit / occ * 100) + '%)'
-      : '지난 ' + counted.length + '주 동안 상황이 없었어요';
-    return h('span', { class: 'weekbars-wrap' },
-      h('span', { class: 'weekbars', 'aria-hidden': 'true' }, weeks.map((w) => h('span', { class: 'wb ' + (w.state === 'quiet' ? 'none' : w.state) },
-        h('span', { class: 'wb-track' }, h('span', { class: 'wb-fill', style: 'height:' + (w.occ ? Math.min(100, w.hit / w.occ * 100) : 0) + '%' })),
-        h('span', { class: 'wb-num num' }, w.state === 'none' || w.state === 'quiet' ? '–' : w.hit + '/' + w.occ)))),
-      h('span', { class: 'sub' }, label));
+  function svgIcon(d, size) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', String(size || 16)); svg.setAttribute('height', String(size || 16));
+    svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+    return svg;
+  }
+  const ICON_NEXT = 'M9 6l6 6-6 6';
+  const ICON_BACK = 'M15 6l-6 6 6 6';
+  const ICON_ARROW = 'M5 12h14M13 6l6 6-6 6';
+
+  // ========== 루틴 ==========
+  /* 이번 주 작은 막대: 요일 루틴은 월~일 칸, 주 N회는 N칸, 상황 루틴은 이번 주 상황 수만큼 */
+  function weekStrip(r) {
+    const L = nowL();
+    const ws = C.startOfWeek(L.day);
+    const done = C.doneDays(state.records, r.id, ws, C.addDays(ws, 7), L.shift);
+    const todayIdx = C.mondayIndex(L.day);
+    let cells = [];
+    const sc = C.scheduleOf(r);
+    if (sc === 'days') {
+      cells = [0, 1, 2, 3, 4, 5, 6].map((i) => {
+        const d = C.addDays(ws, i);
+        const on = r.days.includes(d.getDay());
+        return done[C.dayKey(d)] ? 'hit' : (!on ? 'off' : i === todayIdx ? 'now' : 'empty');
+      });
+    } else if (sc === 'weekly') {
+      const n = Object.keys(done).length;
+      for (let i = 0; i < r.perWeek; i++) cells.push(i < n ? 'hit' : 'empty');
+    } else {
+      const wk = C.situationWeek(r, sitEnv());
+      for (let i = 0; i < wk.occ; i++) cells.push(i < wk.hit ? 'hit' : 'empty');
+    }
+    if (!cells.length) return null;
+    return h('span', { class: 'strip', 'aria-hidden': 'true' }, cells.map((c) => h('span', { class: 's-' + c })));
+  }
+
+  function routineSummary(r) {
+    const now = new Date();
+    const st = C.streak(r, sitEnv(now));
+    let week;
+    if (C.isSituation(r)) { const wk = C.situationWeek(r, sitEnv(now)); week = wk.occ ? '이번 주 ' + wk.occ + '번 중 ' + wk.hit + '번' : '이번 주는 아직 상황 없음'; }
+    else week = '이번 주 ' + C.weekDone(state.records, r.id, now, shift()) + '/' + weekTarget(r);
+    return [anchorPhrase(r), C.isSituation(r) ? null : goalText(r), week, st.current ? streakText(st) : null].filter(Boolean).join(' · ');
   }
 
   function renderRoutines() {
     const box = $('routinesDyn');
+    const open = ui.routine && findRoutine(ui.routine);
+    if (open) { box.replaceChildren(...routineDetail(open)); return; }
+    ui.routine = null;
     const nodes = [h('h2', { class: 'sr-only' }, '내 루틴'),
       h('button', { type: 'button', class: 'new-btn', id: 'btnNewRoutine', onclick: openNewRoutine }, '+ 새 루틴 만들기')];
     if (!state.routines.length) {
       nodes.push(emptyBox('아직 루틴이 없어요.', '위의 ‘새 루틴 만들기’로 주 1회처럼 작게 하나 만들어 보세요. 한 번에 한두 개로 시작하는 편이 오래가요.'));
     } else {
-      const now = new Date();
-      nodes.push(h('ul', { class: 'items plain-list', role: 'list' }, state.routines.map((r) => {
-        const li = h('li', { class: 'item', id: 'rc-' + r.id },
-          h('div', { class: 'item-head' }, h('h3', { class: 'item-name' }, r.name),
-            h('span', { class: 'row' }, h('span', { class: 'kind-tag ' + C.routineKind(r) }, kindName(r)), h('span', { class: 'tag' }, r.category),
-              pencilBtn(q(r.name) + ' 고치기', () => editRoutine(r.id)))),
-          ruleLine(r, null),
-          h('div', { class: 'facts' },
-            h('p', null, goalText(r) + ' · 기본 ' + r.baseMin + '분 / 최소 ' + r.minMin + '분 · ' + measureText(r.measure)),
-            h('p', null, C.isSituation(r)
-              ? (() => { const wk = C.situationWeek(r, sitEnv(now)); return sitWeekText(wk.occ, wk.hit); })()
-              : '이번 주 ' + C.weekDone(state.records, r.id, now, shift()) + '/' + weekTarget(r),
-              (() => { const st = C.streak(r, sitEnv(now)); return st.current ? ' · ' + streakText(st) : ''; })()),
-            weeksDots(r),
-            r.anchor && r.anchor.type === 'block' && findBlock(r.anchor.blockId)
-              ? h('p', null, '시작 신호 요일: ' + daysText(findBlock(r.anchor.blockId).days)) : null));
-        return li;
-      })));
+      nodes.push(h('div', { class: 'section-head' }, h('h3', null, '내 루틴 ' + state.routines.length + '개'), h('span', { class: 'sub' }, '눌러서 자세히 보기')));
+      nodes.push(h('ul', { class: 'rcards', role: 'list' }, state.routines.map((r) => h('li', null,
+        h('button', { type: 'button', class: 'rcard ' + rc(r), id: 'rc-' + r.id, onclick: () => openRoutine(r.id) },
+          h('span', { class: 'rc-dot', 'aria-hidden': 'true' }),
+          h('span', { class: 'rcard-main' },
+            h('span', { class: 'rcard-top' }, h('span', { class: 'rcard-name' }, r.name), h('span', { class: 'rcard-kind' }, kindName(r))),
+            h('span', { class: 'rcard-meta' }, routineSummary(r)),
+            weekStrip(r)),
+          svgIcon(ICON_NEXT))))));
     }
     box.replaceChildren(...nodes);
+  }
+
+  // ---------- 루틴 상세: 루틴 하나에 관한 모든 것 ----------
+  function openRoutine(id) {
+    if (!findRoutine(id)) return;
+    ui.routine = id;
+    if (ui.panel && ui.panel.where === 'routines' && ui.panel.routineId !== id) ui.panel = null;
+    ui.editRecord = null;
+    if (ui.tab !== 'routines') switchTab('routines');
+    else { renderRoutines(); setHash(); }
+    try { window.scrollTo(0, 0); } catch (e) { /* 무시 */ }
+    const t = $('rdTitle');
+    if (t) t.focus();
+  }
+  function closeRoutine() {
+    const id = ui.routine;
+    ui.routine = null;
+    if (ui.panel && ui.panel.where === 'routines') ui.panel = null;
+    renderRoutines();
+    setHash();
+    const card = $('rc-' + id);
+    (card || $('btnNewRoutine')).focus();
+  }
+
+  /* 오늘 할 차례인지 한 줄로 */
+  function todayLine(info) {
+    const r = info.r, a = info.anchor;
+    if (info.doneToday) return '오늘 했어요';
+    if (info.todo) {
+      if (a.today && a.plannedMin != null) return C.fmtHM(a.plannedMin) + (a.type === 'block' || a.type === 'routine' || a.type === 'situation' ? '부터 할 차례예요' : '에 할 차례예요');
+      if (a.type === 'dayoff') return '쉬는 날이라 오늘 할 차례예요';
+      return C.scheduleOf(r) === 'weekly' ? '이번 주 ' + (info.target - info.done) + '번 남았어요' : '오늘 할 차례예요';
+    }
+    if (info.situation) return a.type === 'block' && !a.today ? anchorShort(r, a) : '오늘은 아직 상황이 없어요';
+    if (C.scheduleOf(r) === 'weekly') return '이번 주 횟수를 채웠어요';
+    return '오늘은 쉬는 요일이에요';
+  }
+
+  function routineDetail(r) {
+    const L = nowL();
+    const ctx = dayContext(L);
+    const gaps = C.computeGaps(ctx.blocks, L.weekday, state.settings, L.nowMin);
+    const info = routineInfo(r, L, gaps, ctx);
+    const st = info.streak;
+    const nodes = [];
+
+    nodes.push(h('button', { type: 'button', class: 'back-btn', id: 'rdBack', onclick: closeRoutine }, svgIcon(ICON_BACK), '내 루틴'));
+
+    // 1. 머리
+    nodes.push(h('div', { class: 'rd-head ' + rc(r) },
+      h('span', { class: 'rd-badge', 'aria-hidden': 'true' }),
+      h('div', { class: 'rd-title' },
+        h('h2', { id: 'rdTitle', tabindex: '-1' }, r.name),
+        h('span', { class: 'sub' }, kindName(r) + ' · ' + r.category + ' · ' + COLOR_NAMES[colorOf(r)])),
+      pencilBtn(q(r.name) + ' 고치기', () => editRoutine(r.id), 'rd-edit')));
+
+    // 2. 지금 상태
+    const status = h('section', { class: 'card rd-status', 'aria-labelledby': 'rdTodayH' },
+      h('div', { class: 'rd-today' },
+        h('div', null, h('span', { class: 'sub' }, '오늘'), h('h3', { id: 'rdTodayH' }, todayLine(info))),
+        state.active ? null : h('button', { type: 'button', class: 'btn primary', id: 'rdStart', onclick: () => onStartRoutine(r) }, '시작')),
+      info.todo && !info.doneToday ? fitLine(info) : null,
+      h('div', { class: 'tiles' },
+        h('div', { class: 'tile' }, h('span', null, '이번 주'), h('b', null, info.situation ? info.done + ' / ' + info.target + '번' : info.done + ' / ' + info.target)),
+        h('div', { class: 'tile accent ' + rc(r) }, h('span', null, '연속'), h('b', null, st.current + st.unit)),
+        h('div', { class: 'tile' }, h('span', null, '최고'), h('b', null, st.best + st.unit))),
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'btn small ghost', onclick: () => openPanel(r.id, 'manual') }, '타이머 없이 기록')));
+    if (ui.panel && ui.panel.routineId === r.id && ui.panel.where === 'routines') status.append(routinePanel(r));
+    nodes.push(status);
+
+    // 3. 규칙
+    nodes.push(h('section', { class: 'card', 'aria-labelledby': 'rdRuleH' },
+      h('h3', { id: 'rdRuleH' }, '규칙'),
+      h('p', { class: 'rule-chips' }, h('span', { class: 'rchip' }, anchorPhrase(r)), svgIcon(ICON_ARROW), h('span', { class: 'sr-only' }, ' 그러면 '),
+        h('span', { class: 'rchip ' + rc(r) + ' on' }, r.name)),
+      h('dl', { class: 'facts-dl' },
+        h('dt', null, '얼마나 자주'), h('dd', null, goalText(r)),
+        h('dt', null, '시간'), h('dd', null, '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분',
+          info.cal ? h('span', { class: 'sub' }, ' (기록 기준 약 ' + info.predBase + '분)') : null),
+        h('dt', null, '분량'), h('dd', null, measureText(r.measure)),
+        h('dt', null, '한 번으로 셈'), h('dd', null, r.measure.type === 'fixed' ? '정한 분량을 끝내면' : '최소 ' + r.minMin + '분을 넘기면'),
+        r.anchor && r.anchor.type === 'block' && findBlock(r.anchor.blockId) ? [h('dt', null, '신호 요일'), h('dd', null, daysText(findBlock(r.anchor.blockId).days))] : null)));
+
+    // 4. 기록 달력
+    nodes.push(recordCalendar(r, L));
+
+    // 5. 변화
+    nodes.push(changeSection(r));
+
+    // 6. 루티의 제안 (이 루틴 것만)
+    const sugs = actionable(activeSuggestions()).filter((s) => s.routineId === r.id);
+    if (sugs.length) {
+      nodes.push(h('section', { class: 'card', 'aria-labelledby': 'rdSugH' },
+        h('h3', { id: 'rdSugH', class: 'with-ruti' }, rutiFace(28), '루티의 제안'),
+        h('ul', { class: 'suggest-list' }, sugs.map((s) => {
+          const v = suggestionView(s);
+          return h('li', { class: 'suggest' },
+            h('p', null, v.text),
+            h('details', { class: 'why' }, h('summary', null, '왜 이 제안이에요?'), h('p', null, v.why)),
+            h('div', { class: 'row' },
+              v.apply ? h('button', { type: 'button', class: 'btn small primary', onclick: () => applySuggestion(s) }, v.apply) : null,
+              v.edit ? h('button', { type: 'button', class: 'btn small primary', onclick: () => { dismissSuggestion(s.key); commit(); editRoutine(r.id); } }, '루틴 고치기') : null,
+              h('button', { type: 'button', class: 'btn small ghost', onclick: () => { dismissSuggestion(s.key); commit(); afterSuggestion(); } }, '이번 주는 넘어가기')));
+        }))));
+    }
+
+    // 7. 연결
+    const next = state.routines.filter((x) => x.anchor && x.anchor.type === 'routine' && x.anchor.routineId === r.id);
+    const prev = r.anchor && r.anchor.type === 'routine' ? findRoutine(r.anchor.routineId) : null;
+    if (next.length || prev) {
+      const link = (x) => h('button', { type: 'button', class: 'rlink ' + rc(x), onclick: () => openRoutine(x.id) }, h('span', { class: 'rc-dot', 'aria-hidden': 'true' }), x.name);
+      nodes.push(h('section', { class: 'card', 'aria-labelledby': 'rdLinkH' },
+        h('h3', { id: 'rdLinkH' }, '이어지는 루틴'),
+        prev ? h('p', { class: 'link-row' }, link(prev), h('span', { class: 'sub' }, '끝내면'), svgIcon(ICON_ARROW), h('b', null, r.name)) : null,
+        next.map((x) => h('p', { class: 'link-row' }, h('b', null, r.name), h('span', { class: 'sub' }, '끝내면'), svgIcon(ICON_ARROW), link(x)))));
+    }
+
+    // 8. 최근 기록
+    nodes.push(recentRecords(r));
+    return nodes;
+  }
+
+  /* 지난 5주 달력: 한 날을 루틴 색으로 칠한다. 요일 루틴은 할 날이 아닌 날, 상황 루틴은 상황이 없던 날을 옅게 */
+  function recordCalendar(r, L) {
+    const ws = C.addDays(C.startOfWeek(L.day), -28), we = C.addDays(C.startOfWeek(L.day), 7);
+    const done = C.doneDays(state.records, r.id, ws, we, L.shift);
+    const occ = C.isSituation(r) ? C.occurrenceDays(r, sitEnv(), ws, we) : null;
+    const todayKey = C.dayKey(L.day);
+    const made = C.dayKey(C.startOfDay(new Date(Date.parse(r.createdAt) - L.shift * 60000)));
+    let count = 0;
+    const cells = [];
+    for (let i = 0; i < 35; i++) {
+      const d = C.addDays(ws, i), k = C.dayKey(d);
+      const hit = !!done[k];
+      if (hit) count += 1;
+      const future = k > todayKey, before = k < made;
+      const idle = !hit && (future || before || (C.scheduleOf(r) === 'days' && !r.days.includes(d.getDay())) || (occ && !occ[k]));
+      cells.push(h('span', {
+        class: 'cc' + (hit ? ' hit' : '') + (idle ? ' idle' : '') + (k === todayKey ? ' today' : ''),
+        title: (d.getMonth() + 1) + '/' + d.getDate() + (hit ? ' 했어요' : '')
+      }, String(d.getDate())));
+    }
+    return h('section', { class: 'card', 'aria-labelledby': 'rdCalH' },
+      h('div', { class: 'section-head' }, h('h3', { id: 'rdCalH' }, '지난 5주'), h('span', { class: 'sub' }, count + '일 했어요')),
+      h('div', { class: 'cc-grid ' + rc(r), role: 'img', 'aria-label': '지난 5주 동안 ' + count + '일 했어요' },
+        DAY_ORDER.map((d) => h('span', { class: 'cc-h', 'aria-hidden': 'true' }, C.DAY_NAMES[d])), cells),
+      h('div', { class: 'legend ' + rc(r), 'aria-hidden': 'true' }, h('span', { class: 'lg-hit' }, '한 날'), h('span', { class: 'lg-today' }, '오늘'),
+        C.isSituation(r) ? h('span', { class: 'lg-idle' }, '상황 없던 날')
+          : C.scheduleOf(r) === 'days' && r.days.length < 7 ? h('span', { class: 'lg-idle' }, '쉬는 요일') : null));
+  }
+
+  /* 변화: 최근 걸린 시간 막대(기본·최소 선)와 관찰 문장 */
+  function changeSection(r) {
+    const recs = state.records.filter((x) => x.routineId === r.id).sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+    const sec = h('section', { class: 'card', 'aria-labelledby': 'rdChangeH' }, h('h3', { id: 'rdChangeH' }, '변화'));
+    if (!recs.length) { sec.append(h('p', { class: 'sub' }, '아직 기록이 없어요. 한 번 해 보면 여기에 걸린 시간이 쌓여요.')); return sec; }
+    const last = recs.slice(-10);
+    const top = Math.max(r.baseMin * 1.3, ...last.map((x) => x.actualMin));
+    const pct = (m) => Math.min(100, m / top * 100);
+    const med = C.median(recs.slice(-5).map((x) => x.actualMin));
+    sec.append(
+      h('div', { class: 'section-head' }, h('span', null, '걸린 시간 ', h('span', { class: 'sub' }, '최근 ' + last.length + '번')), h('b', null, '보통 ' + Math.round(med) + '분')),
+      h('div', { class: 'tbars ' + rc(r), role: 'img', 'aria-label': '최근 ' + last.length + '번 걸린 시간: ' + last.map((x) => x.actualMin).join(', ') + '분' },
+        last.map((x) => h('span', { class: 'tb' + (C.countsAsDone(x) ? '' : ' short'), style: 'height:' + pct(x.actualMin) + '%', title: dateText(x.startedAt) + ' ' + x.actualMin + '분' })),
+        h('i', { class: 'tline base', style: 'bottom:' + pct(r.baseMin) + '%' }, h('em', null, '기본 ' + r.baseMin + '분')),
+        h('i', { class: 'tline min', style: 'bottom:' + pct(r.minMin) + '%' }, h('em', null, '최소 ' + r.minMin + '분'))),
+      h('p', { class: 'sub' }, C.durationSentence(C.observeDuration(state.records, r), r)));
+    if (r.anchor) {
+      const text = C.delaySentence(C.observeDelay(state.records, r), anchorLabel(r));
+      sec.append(h('div', { class: 'obs' }, h('span', { class: 'label' }, '시작 신호부터 시작까지'),
+        h('p', null, text || '시작 신호가 있는 날 타이머로 시작하면 시작까지 걸린 시간을 기록해요.')));
+    }
+    return sec;
+  }
+
+  function recentRecords(r) {
+    const list = state.records.filter((x) => x.routineId === r.id).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)).slice(0, 5);
+    const sec = h('section', { class: 'card', 'aria-labelledby': 'rdRecH' }, h('h3', { id: 'rdRecH' }, '최근 기록'));
+    if (!list.length) { sec.append(h('p', { class: 'sub' }, '아직 기록이 없어요.')); return sec; }
+    sec.append(h('ul', { class: 'plain rd-recs' }, list.map((x) => {
+      const li = h('li', { id: 'rrec-' + x.id },
+        h('div', { class: 'rd-rec' },
+          h('span', null, dateText(x.startedAt) + ' ', h('span', { class: 'num' }, clockText(x.startedAt))),
+          h('span', null, h('b', null, x.actualMin + '분'), C.countsAsDone(x) ? null : h('span', { class: 'tag' }, '최소 미만'), x.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null),
+          pencilBtn(q(x.name) + ' ' + dateText(x.startedAt) + ' 기록 고치기', () => (ui.editRecord === x.id ? closeRecordEdit(x.id) : openRecordEdit(x.id, 'detail')), 'edit')));
+      if (ui.editRecord === x.id && ui.editWhere === 'detail') li.append(recordEditForm(x, r));
+      return li;
+    })));
+    sec.append(h('button', { type: 'button', class: 'btn small', onclick: () => { ui.filter = r.category; ui.showAll = false; switchTab('review', 'recH'); } }, q(r.category) + ' 기록 모두 보기'));
+    return sec;
   }
 
   function deleteRoutine(id) {
@@ -1223,6 +1431,7 @@
     const chained = state.routines.filter((x) => x.anchor && x.anchor.type === 'routine' && x.anchor.routineId === id);
     chained.forEach((x) => { x.anchor = null; x.perWeek = x.perWeek || 3; });
     state.routines = state.routines.filter((x) => x.id !== id);
+    if (ui.routine === id) { ui.routine = null; setHash(); }
     if (ui.editRoutine === id) resetRoutineForm();
     if (ui.panel && ui.panel.routineId === id) ui.panel = null;
     if (commit()) showStatus('info', q(r.name) + ' 루틴을 지웠어요.', '기록은 돌아보기에 남아 있어요.' +
@@ -1322,6 +1531,7 @@
     $('rBase').value = '';
     $('rMin').value = '';
     setAnchorType(null);
+    setRadio('rColor', nextColor());
     $('rAnchorTime').value = '';
     $('rAnchorSituation').value = '';
     setRadio('rMeasure', 'count');
@@ -1374,10 +1584,8 @@
     $('rCancel').textContent = '수정 취소';
     $('rDelete').hidden = false;
     toggleRoutineFields();
-    openEditDialog('routineForm', q(r.name) + ' 고치기', () => {
-      const item = $('rc-' + id);
-      return item ? item.querySelector('button') : $('tab-routines');
-    }, resetRoutineForm);
+    setRadio('rColor', colorOf(r));
+    openEditDialog('routineForm', q(r.name) + ' 고치기', () => $('rdTitle') || $('rc-' + id) || $('tab-routines'), resetRoutineForm);
   }
 
   // ---------- 고치기 대화상자 ----------
@@ -1458,6 +1666,9 @@
       toggleRoutineFields();
     }));
     $('rName').addEventListener('input', toggleRoutineFields);
+    // 루틴 색 고르기 (1단계)
+    $('rColorSwatches').replaceChildren(...S.COLORS.map((c) => h('label', { class: 'sw rc-' + c, title: COLOR_NAMES[c] },
+      h('input', { type: 'radio', name: 'rColor', value: c }), h('span', { class: 'sw-dot', 'aria-hidden': 'true' }), h('span', { class: 'sr-only' }, COLOR_NAMES[c]))));
     $('rPerWeek').addEventListener('change', toggleRoutineFields);
     document.querySelectorAll('input[name="rFreq"]').forEach((el) => el.addEventListener('change', toggleRoutineFields));
     document.querySelectorAll('.quick-days [data-days]').forEach((b) => b.addEventListener('click', () => {
@@ -1546,7 +1757,8 @@
         days: freqDays ? checkedRoutineDays() : null,
         baseMin: Number($('rBase').value),
         minMin: Number($('rMin').value),
-        anchor, measure
+        anchor, measure,
+        color: selectedRadio('rColor') || nextColor(ui.editRoutine)
       };
       const editing = ui.editRoutine && findRoutine(ui.editRoutine);
       let saved;
@@ -1563,6 +1775,7 @@
       resetRoutineForm();
       renderAll();
       if (dialog) closeEditDialog(); else $('rName').focus();
+      if (!editing) openRoutine(saved.id);
     });
   }
 
@@ -1775,7 +1988,7 @@
     }
     const sug = suggestionSection();
     if (sug) nodes.push(sug);
-    if (state.routines.length) nodes.push(observationSection());
+    if (state.routines.length) nodes.push(routineLinks());
     nodes.push(ratioSection());
     nodes.push(recordsSection());
     box.replaceChildren(...nodes);
@@ -1892,7 +2105,7 @@
           v.apply ? h('button', { type: 'button', class: 'btn small primary', onclick: () => applySuggestion(s) }, v.apply) : null,
           v.edit ? h('button', {
             type: 'button', class: 'btn small primary',
-            onclick: () => { dismissSuggestion(s.key); commit(); closeSuggestions(); switchTab('routines'); editRoutine(s.routineId); }
+            onclick: () => { dismissSuggestion(s.key); commit(); closeSuggestions(); openRoutine(s.routineId); editRoutine(s.routineId); }
           }, '루틴 고치기') : null,
           h('button', { type: 'button', class: 'btn small ghost', onclick: () => { dismissSuggestion(s.key); commit(); afterSuggestion(); } },
             v.apply || v.edit ? '이번 주는 넘어가기' : '확인')));
@@ -1900,6 +2113,7 @@
   }
   function afterSuggestion() {
     renderAll();
+    if (!$('suggestDialog').open) { const t = $('rdTitle') || $('tab-' + ui.tab); if (t) t.focus(); return; }
     renderSuggestList();
     const first = $('suggestBody').querySelector('button');
     (first || $('suggestClose')).focus();
@@ -1934,24 +2148,13 @@
     });
   }
 
-  function observationSection() {
+  /* 루틴마다 변화·기록 달력은 루틴 상세에 있다 */
+  function routineLinks() {
     return h('section', { class: 'section', 'aria-labelledby': 'obsH' },
       h('h3', { id: 'obsH' }, '루틴별로 보기'),
-      h('ul', { class: 'items plain-list', role: 'list' }, state.routines.map((r) => {
-        const dur = C.observeDuration(state.records, r);
-        const label = { fixed: '걸린 시간 (' + (r.measure.amount || '') + (r.measure.unit || '') + ', 기본 버전)', count: r.measure.unit + '당 걸린 시간', none: '예상과 실제' }[r.measure.type];
-        const li = h('li', { class: 'item' },
-          h('div', { class: 'item-head' }, h('h4', { class: 'item-name' }, r.name), h('span', { class: 'sub' }, goalText(r))),
-          h('div', { class: 'obs' }, h('span', { class: 'label' }, label), h('p', null, C.durationSentence(dur, r))));
-        if (r.anchor) {
-          const delay = C.observeDelay(state.records, r);
-          const text = C.delaySentence(delay, anchorLabel(r));
-          li.append(h('div', { class: 'obs' }, h('span', { class: 'label' }, '앵커부터 시작까지'),
-            h('p', null, text || '앵커가 있는 날 타이머로 시작하면 시작까지 걸린 시간을 기록해요.')));
-        }
-        li.append(h('div', { class: 'obs' }, h('span', { class: 'label' }, '지난 4주'), h('p', null, weeksDots(r))));
-        return li;
-      })));
+      h('p', { class: 'sub' }, '걸린 시간의 변화, 지난 5주 기록, 시작까지 걸린 시간은 루틴마다 자세히 볼 수 있어요.'),
+      h('div', { class: 'rlinks' }, state.routines.map((r) =>
+        h('button', { type: 'button', class: 'rlink ' + rc(r), onclick: () => openRoutine(r.id) }, h('span', { class: 'rc-dot', 'aria-hidden': 'true' }), r.name))));
   }
 
   function ratioSection() {
@@ -2007,8 +2210,8 @@
           (r.amount ? ' · ' + r.amount + amountUnit : ''),
           r.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null,
           r.edited ? h('span', { class: 'tag' }, '고침') : null),
-        h('span', { class: 'rec-del' }, pencilBtn(label + ' 기록 고치기', () => (ui.editRecord === r.id ? closeRecordEdit(r.id) : openRecordEdit(r.id)), 'edit')));
-      if (ui.editRecord === r.id) li.append(recordEditForm(r, routine));
+        h('span', { class: 'rec-del' }, pencilBtn(label + ' 기록 고치기', () => (ui.editRecord === r.id ? closeRecordEdit(r.id) : openRecordEdit(r.id, 'review')), 'edit')));
+      if (ui.editRecord === r.id && ui.editWhere === 'review') li.append(recordEditForm(r, routine));
       return li;
     })));
     if (list.length > shown.length) {
@@ -2019,17 +2222,26 @@
     return sec;
   }
 
-  function openRecordEdit(id) {
+  function recordItem(id) { return $((ui.editWhere === 'detail' ? 'rrec-' : 'rec-') + id); }
+  function focusRecordBtn(id) {
+    const li = recordItem(id);
+    const btn = li && li.querySelector('.edit');
+    if (btn) btn.focus();
+  }
+  function openRecordEdit(id, where) {
     ui.editRecord = id;
+    ui.editWhere = where || 'review';
     renderReview();
-    const first = document.querySelector('#rec-' + CSS.escape(id) + ' form input');
+    renderRoutines();
+    const li = recordItem(id);
+    const first = li && li.querySelector('form input');
     if (first) first.focus();
   }
   function closeRecordEdit(id) {
     ui.editRecord = null;
     renderReview();
-    const btn = document.querySelector('#rec-' + CSS.escape(id) + ' .edit');
-    if (btn) btn.focus();
+    renderRoutines();
+    focusRecordBtn(id);
   }
 
   /* 기록 고치기: 실제 시간, 예상 시간, (분량을 세는 루틴이면) 분량 */
@@ -2067,8 +2279,7 @@
       ui.editRecord = null;
       if (commit()) showStatus('info', q(r.name) + ' 기록을 고쳤어요.', '예상 ' + r.estimateMin + '분 → 실제 ' + r.actualMin + '분');
       renderAll();
-      const btn = document.querySelector('#rec-' + CSS.escape(r.id) + ' .edit');
-      if (btn) btn.focus();
+      focusRecordBtn(r.id);
     });
     return form;
   }
@@ -2095,6 +2306,7 @@
       });
     }
     renderAll();
+    if (ui.tab === 'routines') { const t = $('rdRecH') || $('rdTitle'); if (t) { t.tabIndex = -1; t.focus(); } return; }
     const after = [...document.querySelectorAll('#recordList .rec-del .edit')];
     const target = after[Math.max(0, Math.min(idx, after.length - 1))];
     if (target) target.focus(); else { const t = $('tab-review'); if (t) t.focus(); }
@@ -2206,6 +2418,11 @@
       if (!C.isSituation(r) && r.perWeek === 7 && !(Array.isArray(r.days) && r.days.length)) { r.days = [0, 1, 2, 3, 4, 5, 6]; r.perWeek = null; }
     });
     if (!Array.isArray(d.events)) d.events = [];
+    const used = [];
+    (d.routines || []).forEach((r, i) => {
+      if (!r.color) r.color = S.COLORS.find((c) => !used.includes(c)) || S.COLORS[i % S.COLORS.length];
+      used.push(r.color);
+    });
     return d;
   }
 
@@ -2251,7 +2468,8 @@
     resetRoutineForm();
     resetBlockForm();
     const start = location.hash.slice(1);
-    switchTab(TABS.includes(start) ? start : 'today');
+    ui.routine = routineFromHash(start);
+    switchTab(ui.routine ? 'routines' : TABS.includes(start) ? start : 'today');
     if (start === 'sample') setTimeout(openSettings, 0); // 앱 소개의 '예시 데이터로 둘러보기'
     renderAll();
     renderHolidayInfo();
