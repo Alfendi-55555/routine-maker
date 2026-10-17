@@ -7,7 +7,7 @@
   const C = window.Calc;
   const S = window.Store;
   const BASE_CATEGORIES = ['과제', '공부', '복습', '시험 준비', '팀플', '기타'];
-  const TABS = ['today', 'calendar', 'routines', 'week', 'review'];
+  const TABS = ['today', 'calendar', 'routines', 'review'];
   const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
   const RECORDS_PAGE = 30;
   const KIND_ORDER = ['수업', '통학', '알바', '기타'];
@@ -26,7 +26,9 @@
     editRecord: null,     // 고치는 중인 기록 id
     routine: null,        // 루틴 탭에서 상세로 연 루틴 id (#routine-<id>)
     editWhere: 'review',  // 기록 고치기 칸을 연 곳: review | detail
-    calMonth: null,       // 캘린더에 보이는 달 (그달 1일)
+    calView: 'week',      // 캘린더 보기: week(기본) | month
+    calWeek: null,        // 주 보기에 보이는 주 (월요일)
+    calMonth: null,       // 월 보기에 보이는 달 (그달 1일)
     calSel: null,         // 캘린더에서 고른 날 'YYYY-MM-DD'
     lastMinute: -1
   };
@@ -204,31 +206,45 @@
   }
 
   // ========== 캘린더 ==========
-  /* 월별 달력: 공휴일과 기록한 날을 보여 주고, 날짜를 누르면 그날 고정 일정과 기록 */
+  /* 주 보기(기본): 시간표처럼 고정 일정(회색)·한 루틴(루틴 색)·할 차례(점선). 월 보기: 공휴일과 기록한 날.
+   * 아래에는 매주 반복되는 고정 일정 목록 (예전 주간 틀) */
   function renderCalendar() {
     const box = $('calendarDyn');
     if (!box) return;
     const L = nowL();
     const todayKey = C.dayKey(L.day);
-    if (!ui.calMonth) ui.calMonth = new Date(L.day.getFullYear(), L.day.getMonth(), 1);
     if (!ui.calSel) ui.calSel = todayKey;
-    const y = ui.calMonth.getFullYear(), mo = ui.calMonth.getMonth();
-    const first = new Date(y, mo, 1);
-    const gridStart = C.addDays(first, -C.mondayIndex(first));
-    const weeks = Math.ceil((C.mondayIndex(first) + new Date(y, mo + 1, 0).getDate()) / 7);
-
     const byDay = {};
     state.records.forEach((r) => { const k = C.logicalKey(r.startedAt, L.shift); (byDay[k] = byDay[k] || []).push(r); });
     const hmap = {};
     holidays.list.forEach((x) => { hmap[x.date] = x.name; });
 
+    const setView = (v) => { ui.calView = v; renderCalendar(); const b = document.querySelector('.view-toggle [aria-pressed="true"]'); if (b) b.focus(); };
+    const toggle = h('div', { class: 'view-toggle', role: 'group', 'aria-label': '보기' },
+      h('button', { type: 'button', 'aria-pressed': String(ui.calView === 'week'), onclick: () => setView('week') }, '주'),
+      h('button', { type: 'button', 'aria-pressed': String(ui.calView === 'month'), onclick: () => setView('month') }, '월'));
+
+    const nodes = [h('h2', { class: 'sr-only' }, '캘린더')];
+    if (ui.calView === 'month') nodes.push(monthView(L, todayKey, byDay, hmap, toggle));
+    else nodes.push(...weekView(L, todayKey, byDay, hmap, toggle));
+    nodes.push(calendarDay(ui.calSel, hmap, byDay));
+    nodes.push(blockList());
+    box.replaceChildren(...nodes);
+  }
+
+  function monthView(L, todayKey, byDay, hmap, toggle) {
+    if (!ui.calMonth) ui.calMonth = new Date(L.day.getFullYear(), L.day.getMonth(), 1);
+    const y = ui.calMonth.getFullYear(), mo = ui.calMonth.getMonth();
+    const first = new Date(y, mo, 1);
+    const gridStart = C.addDays(first, -C.mondayIndex(first));
+    const weeks = Math.ceil((C.mondayIndex(first) + new Date(y, mo + 1, 0).getDate()) / 7);
     const move = (n) => { ui.calMonth = new Date(y, mo + n, 1); renderCalendar(); };
-    const head = h('div', { class: 'cal-head' },
-      h('button', { type: 'button', class: 'btn small ghost', onclick: () => move(-1), 'aria-label': '이전 달' }, '‹ 이전'),
-      h('h2', { id: 'calTitle', 'aria-live': 'polite' }, y + '년 ' + (mo + 1) + '월'),
-      h('div', { class: 'row' },
-        h('button', { type: 'button', class: 'btn small', onclick: () => { ui.calMonth = null; ui.calSel = null; renderCalendar(); } }, '오늘'),
-        h('button', { type: 'button', class: 'btn small ghost', onclick: () => move(1), 'aria-label': '다음 달' }, '다음 ›')));
+    const head = h('div', { class: 'cal-head' }, toggle,
+      h('div', { class: 'cal-nav' },
+        h('button', { type: 'button', class: 'icon-btn', onclick: () => move(-1), 'aria-label': '이전 달' }, svgIcon(ICON_BACK)),
+        h('h3', { id: 'calTitle', 'aria-live': 'polite' }, y + '년 ' + (mo + 1) + '월'),
+        h('button', { type: 'button', class: 'icon-btn', onclick: () => move(1), 'aria-label': '다음 달' }, svgIcon(ICON_NEXT))),
+      h('button', { type: 'button', class: 'btn small', onclick: () => { ui.calMonth = null; ui.calSel = null; renderCalendar(); } }, '오늘'));
 
     const rows = [];
     for (let w = 0; w < weeks; w++) {
@@ -237,6 +253,8 @@
         const k = C.dayKey(d);
         const hol = hmap[k];
         const recs = byDay[k] || [];
+        const routines = [...new Set(recs.filter((r) => r.routineId && C.countsAsDone(r)).map((r) => r.routineId))].map(findRoutine).filter(Boolean);
+        const tasks = recs.filter((r) => r.kind === 'task').length;
         const label = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + C.DAY_NAMES[d.getDay()] + '요일' +
           (hol ? ', ' + hol : '') + (recs.length ? ', 기록 ' + recs.length + '개' : '') + (k === todayKey ? ', 오늘' : '');
         return h('td', null, h('button', {
@@ -254,20 +272,183 @@
         },
         h('span', { class: 'cal-num', 'aria-hidden': 'true' }, String(d.getDate())),
         hol ? h('span', { class: 'cal-hol', 'aria-hidden': 'true' }, hol) : null,
-        recs.length ? h('span', { class: 'cal-dots', 'aria-hidden': 'true' }, '●'.repeat(Math.min(3, recs.length)) + (recs.length > 3 ? '+' : '')) : null));
+        routines.length || tasks ? h('span', { class: 'cal-dots', 'aria-hidden': 'true' },
+          routines.slice(0, 4).map((r) => h('i', { class: rc(r) })), tasks ? h('i', { class: 'task' }) : null) : null));
       })));
     }
     const table = h('table', { class: 'cal' },
       h('caption', { class: 'sr-only' }, y + '년 ' + (mo + 1) + '월 달력'),
       h('thead', null, h('tr', null, DAY_ORDER.map((d) => h('th', { scope: 'col', class: d === 0 ? 'red' : '' }, C.DAY_NAMES[d])))),
       h('tbody', null, rows));
+    return h('section', { class: 'card', 'aria-labelledby': 'calTitle' }, head, table,
+      h('div', { class: 'legend' }, h('span', { class: 'lg-hol' }, '공휴일'), h('span', { class: 'lg-dot' }, '한 루틴(루틴 색)'), h('span', { class: 'lg-task' }, '다른 활동')),
+      holidays.status === 'ok' ? null : h('p', { class: 'hint' }, holidayStatusText()));
+  }
 
-    box.replaceChildren(
-      h('h2', { class: 'sr-only' }, '캘린더'),
-      h('section', { class: 'card', 'aria-labelledby': 'calTitle' }, head, table,
-        h('div', { class: 'legend' }, h('span', { class: 'lg-hol' }, '공휴일'), h('span', { class: 'lg-dot' }, '기록한 날')),
-        holidays.status === 'ok' ? null : h('p', { class: 'hint' }, holidayStatusText())),
-      calendarDay(ui.calSel, hmap, byDay));
+  /* 그 주 각 날의 할 차례(아직 안 한 루틴): 시각 루틴은 그 시각, 고정 일정이 끝나면은 그 끝, 다른 루틴을 끝내면은 그 뒤.
+   * 쉬는 날이면은 종일 칸. 아무 때나·내가 알려 주는 상황은 시각을 알 수 없어 그리지 않는다 */
+  function plannedFor(d, dayBl, isOff) {
+    const L = nowL();
+    const out = [], allDay = [];
+    const notDone = (r) => !C.doneOn(state.records, r.id, d, L.shift);
+    state.routines.forEach((r) => {
+      const a = r.anchor;
+      if (!a || !notDone(r)) return;
+      if (a.type === 'time') {
+        if (C.scheduleOf(r) === 'days' && !r.days.includes(d.getDay())) return;
+        if (C.scheduleOf(r) === 'weekly') return;
+        const t = C.toMin(a.time);
+        out.push({ r, start: t < L.shift ? t + 1440 : t, len: r.baseMin });
+      } else if (a.type === 'block') {
+        const b = dayBl.find((x) => x.id === a.blockId);
+        if (b) out.push({ r, start: C.toMin(b.end) + state.settings.bufferMin, len: r.baseMin });
+      } else if (a.type === 'dayoff' && isOff) allDay.push(r);
+    });
+    // 다른 루틴을 끝내면: 그 루틴의 할 차례 바로 뒤
+    state.routines.forEach((r) => {
+      const a = r.anchor;
+      if (!a || a.type !== 'routine' || !notDone(r)) return;
+      const prev = out.find((p) => p.r.id === a.routineId);
+      if (prev) out.push({ r, start: prev.start + prev.len, len: r.baseMin });
+    });
+    return { out, allDay };
+  }
+
+  function weekView(L, todayKey, byDay, hmap, toggle) {
+    if (!ui.calWeek) ui.calWeek = C.startOfWeek(L.day);
+    const ws = ui.calWeek;
+    const days = [0, 1, 2, 3, 4, 5, 6].map((i) => C.addDays(ws, i));
+    // 고른 날이 이 주 밖이면 이 주의 오늘(없으면 월요일)로
+    const keys = days.map(C.dayKey);
+    if (!keys.includes(ui.calSel)) ui.calSel = keys.includes(todayKey) ? todayKey : keys[0];
+    const off = C.holidayOff(state.settings);
+    const s = state.settings;
+    // 보이는 시간: 하루 시작~끝 (고정 일정이 밖에 있으면 넓힌다)
+    let ds = C.toMin(s.dayStart), de = C.dayEndMin(s);
+    state.blocks.forEach((b) => { ds = Math.min(ds, C.toMin(b.start)); de = Math.max(de, C.toMin(b.end)); });
+    ds = Math.floor(ds / 60) * 60; de = Math.ceil(de / 60) * 60;
+    const PX = 34;
+    const y = (m) => (Math.min(Math.max(m, ds), de) - ds) / 60 * PX;
+    const H = (de - ds) / 60 * PX;
+
+    const move = (n) => { ui.calWeek = C.addDays(ws, 7 * n); renderCalendar(); };
+    const last = days[6];
+    const title = (ws.getMonth() + 1) + '월 ' + ws.getDate() + '일 – ' + (last.getMonth() !== ws.getMonth() ? (last.getMonth() + 1) + '월 ' : '') + last.getDate() + '일';
+    const head = h('div', { class: 'cal-head' }, toggle,
+      h('div', { class: 'cal-nav' },
+        h('button', { type: 'button', class: 'icon-btn', onclick: () => move(-1), 'aria-label': '이전 주' }, svgIcon(ICON_BACK)),
+        h('h3', { id: 'calTitle', 'aria-live': 'polite' }, title),
+        h('button', { type: 'button', class: 'icon-btn', onclick: () => move(1), 'aria-label': '다음 주' }, svgIcon(ICON_NEXT))),
+      h('button', { type: 'button', class: 'btn small', onclick: () => { ui.calWeek = null; ui.calSel = null; renderCalendar(); } }, '오늘'));
+
+    const heads = [], lanes = [], cols = [];
+    let anyAllDay = false;
+    days.forEach((d) => {
+      const k = C.dayKey(d);
+      const hol = hmap[k];
+      const dayBl = C.dayBlocks(C.blocksForDay(state.blocks, !!hol, off), d.getDay());
+      const isOff = !!hol || dayBl.length === 0;
+      heads.push(h('button', {
+        type: 'button', class: 'wk-day' + (k === todayKey ? ' today' : '') + (k === ui.calSel ? ' sel' : '') + (hol || d.getDay() === 0 ? ' red' : ''),
+        'aria-pressed': String(k === ui.calSel), title: hol || null,
+        'aria-label': (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + C.DAY_NAMES[d.getDay()] + '요일' + (hol ? ', ' + hol : '') + (k === todayKey ? ', 오늘' : '') + ' 자세히 보기',
+        onclick: () => { ui.calSel = k; renderCalendar(); const b = document.querySelector('.wk-day.sel'); if (b) b.focus(); }
+      }, h('span', null, C.DAY_NAMES[d.getDay()]), h('b', null, String(d.getDate()))));
+
+      const items = [];
+      // 고정 일정 (공휴일에 쉬는 종류는 뺌)
+      dayBl.forEach((b) => {
+        const top = y(C.toMin(b.start)), hh = y(C.toMin(b.end)) - top;
+        items.push(h('button', {
+          type: 'button', class: 'ev fixed ' + kindClass(b.kind), style: 'top:' + top + 'px;height:' + Math.max(6, hh - 1) + 'px',
+          title: b.name + ' ' + b.start + '–' + b.end, 'aria-label': C.DAY_NAMES[d.getDay()] + '요일 ' + b.name + ' ' + b.start + '–' + b.end + ', 고정 일정 고치기',
+          onclick: () => editBlock(b.id)
+        }, hh >= 28 ? h('span', { 'aria-hidden': 'true' }, b.name) : null));
+      });
+      // 한 기록
+      (byDay[k] || []).forEach((r) => {
+        const st = (Date.parse(r.startedAt) - d.getTime()) / 60000;
+        const top = y(st), hh = y(st + r.actualMin) - top;
+        const routine = r.routineId ? findRoutine(r.routineId) : null;
+        const label = clockText(r.startedAt) + ' ' + r.name + ' ' + r.actualMin + '분' + (C.countsAsDone(r) ? '' : ' (최소 미만)');
+        items.push(h(routine ? 'button' : 'span', {
+          type: routine ? 'button' : null,
+          class: 'ev rec ' + (routine ? rc(routine) : 'task') + (C.countsAsDone(r) ? '' : ' short'),
+          style: 'top:' + top + 'px;height:' + Math.max(7, hh - 1) + 'px', title: label,
+          'aria-label': routine ? label + ', 루틴 자세히 보기' : null,
+          onclick: routine ? () => openRoutine(routine.id) : null
+        }, hh >= 20 ? h('span', { 'aria-hidden': 'true' }, r.name) : null));
+      });
+      // 할 차례 (오늘과 그 뒤)
+      let allDay = [];
+      if (k >= todayKey) {
+        const p = plannedFor(d, dayBl, isOff);
+        allDay = p.allDay;
+        p.out.forEach((x) => {
+          const top = y(x.start), hh = y(x.start + x.len) - top;
+          if (hh <= 0) return;
+          items.push(h('button', {
+            type: 'button', class: 'ev plan ' + rc(x.r), style: 'top:' + top + 'px;height:' + Math.max(7, hh - 1) + 'px',
+            title: C.fmtHM(x.start) + ' ' + x.r.name + ' 할 차례', 'aria-label': C.DAY_NAMES[d.getDay()] + '요일 ' + C.fmtHM(x.start) + ' ' + x.r.name + ' 할 차례, 루틴 자세히 보기',
+            onclick: () => openRoutine(x.r.id)
+          }, hh >= 20 ? h('span', { 'aria-hidden': 'true' }, x.r.name) : null));
+        });
+      }
+      if (allDay.length) anyAllDay = true;
+      lanes.push(h('div', { class: 'wk-lane' }, allDay.map((r) => h('button', {
+        type: 'button', class: 'ev-all ' + rc(r), title: r.name + ' · 쉬는 날이면', onclick: () => openRoutine(r.id),
+        'aria-label': C.DAY_NAMES[d.getDay()] + '요일 ' + r.name + ' 할 차례 (쉬는 날), 루틴 자세히 보기'
+      }, r.name))));
+      if (k === todayKey && L.nowMin >= ds && L.nowMin <= de) items.push(h('span', { class: 'wk-now', style: 'top:' + y(L.nowMin) + 'px', 'aria-hidden': 'true' }));
+      cols.push(h('div', { class: 'wk-col' + (k === todayKey ? ' today' : ''), style: 'height:' + H + 'px;background-size:100% ' + PX + 'px' }, items));
+    });
+    const hours = [];
+    for (let m = ds + 60; m < de; m += 120) hours.push(h('span', { style: 'top:' + (y(m) - 7) + 'px' }, String(Math.floor(m / 60) % 24)));
+
+    const grid = h('section', { class: 'card wk', 'aria-labelledby': 'calTitle' }, head,
+      h('div', { class: 'wk-grid' },
+        h('span', { 'aria-hidden': 'true' }), heads,
+        anyAllDay ? [h('span', { class: 'wk-allday-h', 'aria-hidden': 'true' }, '종일'), ...lanes] : null,
+        h('div', { class: 'wk-hours', style: 'height:' + H + 'px', 'aria-hidden': 'true' }, hours), cols));
+    const legend = h('div', { class: 'legend wk-legend', 'aria-hidden': 'true' },
+      h('span', { class: 'lg-block' }, '고정 일정'), h('span', { class: 'lg-rec' }, '한 루틴(루틴 색)'),
+      h('span', { class: 'lg-plan' }, '할 차례'), h('span', { class: 'lg-task' }, '다른 활동'), h('span', { class: 'lg-now' }, '지금'));
+    grid.append(legend,
+      h('p', { class: 'sub' }, '칸을 누르면 그 루틴이나 고정 일정이 열려요. 날짜를 누르면 그날을 아래에서 자세히 봐요.'),
+      holidays.status === 'ok' ? null : h('p', { class: 'hint' }, holidayStatusText()));
+    return [grid];
+  }
+
+  /* 매주 반복되는 고정 일정 목록 (예전 주간 틀). 이걸 빼고 남는 시간이 빈 시간 */
+  function blockList() {
+    const sec = h('section', { class: 'card', 'aria-labelledby': 'blocksH' },
+      h('div', { class: 'section-head' }, h('h3', { id: 'blocksH' }, '고정 일정' + (state.blocks.length ? ' ' + state.blocks.length + '개' : '')),
+        h('span', { class: 'sub' }, '매주 반복 · 빼고 남는 시간이 빈 시간')));
+    if (!state.blocks.length) {
+      sec.append(h('p', { class: 'sub' }, '수업, 통학, 알바처럼 내가 옮길 수 없는 일정을 넣어 보세요.'));
+    } else {
+      const sorted = state.blocks.slice().sort((a, b) =>
+        (KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)) || C.toMin(a.start) - C.toMin(b.start));
+      sec.append(h('ul', { class: 'plain blist' }, sorted.map((b) => {
+        const anchored = state.routines.filter((r) => r.anchor && r.anchor.type === 'block' && r.anchor.blockId === b.id);
+        return h('li', { id: 'bc-' + b.id, class: 'brow' },
+          h('span', { class: 'bsq ' + kindClass(b.kind), 'aria-hidden': 'true' }),
+          h('span', { class: 'bmain' }, h('b', null, b.name), ' ', h('span', { class: 'sub' }, b.kind + ' · ' + daysText(b.days) + ' ', h('span', { class: 'num' }, b.start + '–' + b.end)),
+            anchored.length ? h('span', { class: 'sub bsig' }, '끝나면 → ' + anchored.map((r) => r.name).join(', ')) : null),
+          pencilBtn(q(b.name) + ' 고치기', () => editBlock(b.id)));
+      })));
+    }
+    sec.append(h('button', { type: 'button', class: 'new-btn', id: 'btnNewBlock', onclick: openNewBlock }, '+ 고정 일정 넣기'));
+    return sec;
+  }
+
+  /* 고정 일정 넣기: 빈 폼을 화면 위 창으로 */
+  function openNewBlock() {
+    if (ui.tab !== 'calendar') switchTab('calendar');
+    resetBlockForm();
+    openEditDialog('blockForm', '고정 일정 넣기', () => $('btnNewBlock') || $('tab-calendar'), resetBlockForm);
+    $('bCancel').hidden = false;
+    $('bCancel').textContent = '취소';
   }
 
   /* 고른 날: 공휴일, 그날 고정 일정(공휴일에 쉬는 것 표시), 그날 기록 */
@@ -292,7 +473,7 @@
       h('div', { class: 'obs' }, h('span', { class: 'label' }, '기록'),
         recs.length
           ? h('ul', { class: 'plain' }, recs.map((r) => h('li', { class: 'gap-row' },
-            h('span', null, h('span', { class: 'num' }, clockText(r.startedAt)), ' ' + r.name + (r.version === 'min' ? ' (최소)' : '') + (C.countsAsDone(r) ? '' : ' (최소 미만)')),
+            h('span', null, h('span', { class: 'dot rc ' + (r.routineId && findRoutine(r.routineId) ? rc(findRoutine(r.routineId)) : 'task'), 'aria-hidden': 'true' }), ' ', h('span', { class: 'num' }, clockText(r.startedAt)), ' ' + r.name + (r.version === 'min' ? ' (최소)' : '') + (C.countsAsDone(r) ? '' : ' (최소 미만)')),
             h('span', { class: 'num' }, r.actualMin + '분'))))
           : h('p', { class: 'sub' }, '이날 기록이 없어요.')));
   }
@@ -417,6 +598,7 @@
       const name = location.hash.slice(1);
       const rid = routineFromHash(name);
       if (rid) { if (rid !== ui.routine || ui.tab !== 'routines') openRoutine(rid); return; }
+      if (name === 'week') { switchTab('calendar'); return; }
       if (TABS.includes(name) && name !== ui.tab) switchTab(name);
     });
   }
@@ -427,7 +609,6 @@
     renderActive();
     renderToday();
     renderRoutines();
-    renderWeek();
     renderCalendar();
     renderReview();
     syncAnchorBlocks();
@@ -717,7 +898,7 @@
       nodes.push(emptyBox('아직 고정 일정이 없어요.',
         '수업·통학·알바처럼 매주 같은 시간에 하는 일부터 넣어 보세요. 그걸 빼고 남는 시간이 빈 시간이 돼요.',
         h('div', { class: 'row' },
-          h('button', { type: 'button', class: 'btn primary', onclick: () => switchTab('week', 'bName') }, '주간 틀에 고정 일정 넣기'),
+          h('button', { type: 'button', class: 'btn primary', onclick: openNewBlock }, '고정 일정 넣기'),
           hasAnyData() ? null : h('a', { class: 'btn ghost', href: 'intro.html' }, '처음이라면 앱 소개 보기'))));
     } else {
       nodes.push(dayCard(todays, gaps, L.nowMin, infos));
@@ -1491,7 +1672,7 @@
     const sel = $('rAnchorBlock');
     const keep = sel.value;
     if (!state.blocks.length) {
-      sel.replaceChildren(h('option', { value: '' }, '먼저 주간 틀에 고정 일정을 넣어 주세요'));
+      sel.replaceChildren(h('option', { value: '' }, '먼저 캘린더 탭에서 고정 일정을 넣어 주세요'));
       sel.disabled = true;
       return;
     }
@@ -1715,7 +1896,7 @@
       if (!selectedRadio('rKind')) errs.push(setErr('stepKind', '어떤 루틴인지 골라 주세요', 'rKindErr'));
       else if (!anchorType) errs.push(setErr('rSitDetail', '어떤 상황이 되면 할지 골라 주세요', 'rAnchorErr'));
       if (anchorType === 'block') {
-        if (!$('rAnchorBlock').value || !findBlock($('rAnchorBlock').value)) errs.push(setErr('rAnchorBlock', '고정 일정을 골라 주세요. 없다면 주간 틀에서 먼저 넣어 주세요', 'rAnchorErr'));
+        if (!$('rAnchorBlock').value || !findBlock($('rAnchorBlock').value)) errs.push(setErr('rAnchorBlock', '고정 일정을 골라 주세요. 없다면 캘린더 탭에서 먼저 넣어 주세요', 'rAnchorErr'));
         else anchor = { type: 'block', blockId: $('rAnchorBlock').value };
       } else if (anchorType === 'time') {
         if (isNaN(C.toMin($('rAnchorTime').value))) errs.push(setErr('rAnchorTime', '시작할 시각을 골라 주세요', 'rAnchorErr'));
@@ -1779,74 +1960,7 @@
     });
   }
 
-  // ========== 주간 틀 ==========
-  function renderWeek() {
-    const box = $('weekDyn');
-    const nodes = [h('h2', { class: 'sr-only' }, '주간 틀'),
-      h('p', { class: 'sub' }, '매주 반복되는 고정 일정이에요. 이걸 빼고 남는 시간이 빈 시간이 돼요.')];
-    if (!state.blocks.length) {
-      nodes.push(emptyBox('아직 고정 일정이 없어요.', '수업, 통학, 알바처럼 내가 옮길 수 없는 일정을 아래에서 넣어 보세요.'));
-      box.replaceChildren(...nodes);
-      return;
-    }
-    nodes.push(weekChart());
-
-    nodes.push(h('ul', { class: 'items plain-list', role: 'list', 'aria-label': '고정 일정 목록' }, state.blocks.map((b) => {
-      const anchored = state.routines.filter((r) => r.anchor && r.anchor.type === 'block' && r.anchor.blockId === b.id);
-      const li = h('li', { class: 'item', id: 'bc-' + b.id },
-        h('div', { class: 'item-head' }, h('h3', { class: 'item-name' }, b.name),
-          h('span', { class: 'row' }, h('span', { class: 'tag' }, b.kind), pencilBtn(q(b.name) + ' 고치기', () => editBlock(b.id)))),
-        h('p', { class: 'sub' }, daysText(b.days) + ' · ', h('span', { class: 'num' }, b.start + '–' + b.end),
-          anchored.length ? ' · 시작 신호로 쓰는 루틴: ' + anchored.map((r) => r.name).join(', ') : ''));
-      return li;
-    })));
-    box.replaceChildren(...nodes);
-  }
-
-  /* 요일별 막대: 고정 일정을 종류별 색으로. 막대에 마우스를 올리거나 초점을 주면 이름·시간이 뜨고, 누르면 고치기 */
-  function weekChart() {
-    const s = state.settings;
-    let ds = C.toMin(s.dayStart), de = C.dayEndMin(s);
-    state.blocks.forEach((b) => { ds = Math.min(ds, C.toMin(b.start)); de = Math.max(de, C.toMin(b.end)); });
-    ds = Math.floor(ds / 60) * 60;
-    de = Math.ceil(de / 60) * 60;
-    const total = de - ds;
-    const pct = (m) => (m - ds) / total * 100;
-    const step = total > 12 * 60 ? 180 : 120;
-    const ticks = [];
-    for (let t = Math.ceil(ds / step) * step; t <= de; t += step) ticks.push(t);
-
-    const rows = DAY_ORDER.map((d) => {
-      const list = C.dayBlocks(state.blocks, d);
-      const bar = h('div', { class: 'wbar' },
-        ticks.map((t) => h('span', { class: 'wtick', style: 'left:' + pct(t) + '%', 'aria-hidden': 'true' })),
-        list.map((b) => {
-          const left = pct(C.toMin(b.start));
-          const width = pct(C.toMin(b.end)) - left;
-          const edge = left < 15 ? ' tip-left' : (left + width > 85 ? ' tip-right' : '');
-          return h('button', {
-            type: 'button', class: 'seg ' + kindClass(b.kind) + edge,
-            style: 'left:' + left + '%;width:' + width + '%',
-            'data-tip': b.name + ' · ' + b.start + '–' + b.end,
-            'aria-label': C.DAY_NAMES[d] + '요일 ' + b.name + ' (' + b.kind + ') ' + b.start + '–' + b.end + ', 고치기',
-            onclick: () => editBlock(b.id)
-          }, width >= 12 ? h('span', { class: 'seg-label', 'aria-hidden': 'true' }, b.name) : null);
-        }));
-      return h('div', { class: 'wrow' },
-        h('span', { class: 'wday' + (list.length ? '' : ' muted') }, C.DAY_NAMES[d]),
-        bar);
-    });
-    const scale = h('div', { class: 'wrow wscale', 'aria-hidden': 'true' }, h('span', { class: 'wday' }),
-      h('div', { class: 'wticks' }, ticks.map((t) => h('span', { style: 'left:' + pct(t) + '%' }, (Math.floor(t / 60) % 24) + '시'))));
-    const kinds = KIND_ORDER.filter((k) => state.blocks.some((b) => (KIND_ORDER.includes(b.kind) ? b.kind : '기타') === k));
-
-    return h('section', { class: 'card', 'aria-labelledby': 'weekOverviewH' },
-      h('h3', { id: 'weekOverviewH' }, '요일별로 보기'),
-      h('p', { class: 'sub' }, '막대에 마우스를 올리면 일정 이름이 보이고, 누르면 고칠 수 있어요.'),
-      h('div', { class: 'week-chart' }, rows, scale),
-      h('div', { class: 'legend', 'aria-label': '색 구분' }, kinds.map((k) => h('span', { class: 'lg-k ' + kindClass(k) }, k))));
-  }
-
+  // ========== 고정 일정 (캘린더 탭) ==========
   function deleteBlock(id) {
     const b = findBlock(id);
     if (!b) return;
@@ -1858,7 +1972,7 @@
     if (commit()) showStatus('info', q(b.name) + ' 고정 일정을 지웠어요.',
       anchored.length ? anchored.map((r) => q(r.name)).join(', ') + '은(는) 이제 아무 때나 루틴이에요. 루틴 탭에서 얼마나 자주 할지 확인해 주세요.' : '');
     renderAll();
-    $('blockFormH').focus();
+    ($('btnNewBlock') || $('tab-calendar')).focus();
   }
 
   function checkedDays() {
@@ -1892,9 +2006,11 @@
     $('bSubmit').textContent = '고친 내용 저장';
     $('bCancel').hidden = false;
     $('bDelete').hidden = false;
+    const from = document.activeElement;
     openEditDialog('blockForm', q(b.name) + ' 고치기', () => {
+      if (from && document.contains(from)) return from;
       const item = $('bc-' + id);
-      return item ? item.querySelector('button') : $('tab-week');
+      return item ? item.querySelector('button') : $('tab-calendar');
     }, resetBlockForm);
   }
 
@@ -1942,7 +2058,7 @@
       }
       resetBlockForm();
       renderAll();
-      if (editing && dialog) closeEditDialog(); else $('bName').focus();
+      if (dialog) closeEditDialog(); else $('bName').focus();
     });
   }
 
@@ -2385,7 +2501,7 @@
       resetBlockForm();
       resetRoutineForm();
       $('clearConfirm').hidden = true;
-      if (commit()) showStatus('info', '모든 데이터를 지웠어요.', '주간 틀에 고정 일정을 넣는 것부터 다시 시작할 수 있어요.');
+      if (commit()) showStatus('info', '모든 데이터를 지웠어요.', '캘린더 탭에서 고정 일정을 넣는 것부터 다시 시작할 수 있어요.');
       renderAll();
       $('sampleBox').hidden = false;
       $('btnClear').focus();
@@ -2469,7 +2585,7 @@
     resetBlockForm();
     const start = location.hash.slice(1);
     ui.routine = routineFromHash(start);
-    switchTab(ui.routine ? 'routines' : TABS.includes(start) ? start : 'today');
+    switchTab(ui.routine ? 'routines' : start === 'week' ? 'calendar' : TABS.includes(start) ? start : 'today');
     if (start === 'sample') setTimeout(openSettings, 0); // 앱 소개의 '예시 데이터로 둘러보기'
     renderAll();
     renderHolidayInfo();

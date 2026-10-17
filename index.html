@@ -30,7 +30,6 @@
       <button type="button" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true">오늘</button>
       <button type="button" role="tab" id="tab-calendar" aria-controls="panel-calendar" aria-selected="false" tabindex="-1">캘린더</button>
       <button type="button" role="tab" id="tab-routines" aria-controls="panel-routines" aria-selected="false" tabindex="-1">루틴</button>
-      <button type="button" role="tab" id="tab-week" aria-controls="panel-week" aria-selected="false" tabindex="-1">주간 틀</button>
       <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" tabindex="-1">돌아보기</button>
     </nav>
   </div>
@@ -132,9 +131,65 @@
       </section>
     </section>
 
-    <!-- 캘린더: 공휴일과 기록한 날 -->
+    <!-- 캘린더: 주 보기(기본)·월 보기, 그리고 매주 반복되는 고정 일정 -->
     <section id="panel-calendar" role="tabpanel" aria-labelledby="tab-calendar" hidden>
       <div id="calendarDyn"></div>
+
+      <!-- 고정 일정 넣기·고치기 폼: '+ 고정 일정 넣기'나 연필을 누르면 화면 위 창으로 옮겨져 열린다 -->
+      <section class="card" aria-label="고정 일정 넣기" hidden>
+        <form id="blockForm" novalidate>
+          <div class="grid2">
+            <div class="field">
+              <label for="bName">이름</label>
+              <input id="bName" autocomplete="off" placeholder="예: 자료구조" aria-describedby="bNameErr">
+              <p class="err" id="bNameErr"></p>
+            </div>
+            <div class="field">
+              <label for="bKind">종류</label>
+              <select id="bKind">
+                <option>수업</option><option>통학</option><option>알바</option><option>기타</option>
+              </select>
+            </div>
+          </div>
+          <fieldset class="choice days" id="bDaysSet" aria-describedby="bDaysErr">
+            <legend>요일</legend>
+            <div class="daypick">
+              <label><input type="checkbox" name="bDay" value="1"><span>월</span></label>
+              <label><input type="checkbox" name="bDay" value="2"><span>화</span></label>
+              <label><input type="checkbox" name="bDay" value="3"><span>수</span></label>
+              <label><input type="checkbox" name="bDay" value="4"><span>목</span></label>
+              <label><input type="checkbox" name="bDay" value="5"><span>금</span></label>
+              <label><input type="checkbox" name="bDay" value="6"><span>토</span></label>
+              <label><input type="checkbox" name="bDay" value="0"><span>일</span></label>
+            </div>
+            <p class="err" id="bDaysErr"></p>
+          </fieldset>
+          <div class="grid2">
+            <div class="field">
+              <label for="bStart">시작</label>
+              <input type="time" id="bStart" aria-describedby="bStartErr">
+              <p class="err" id="bStartErr"></p>
+            </div>
+            <div class="field">
+              <label for="bEnd">끝</label>
+              <input type="time" id="bEnd" aria-describedby="bEndErr">
+              <p class="err" id="bEndErr"></p>
+            </div>
+          </div>
+          <div class="row">
+            <button type="submit" class="btn primary" id="bSubmit">고정 일정 넣기</button>
+            <button type="button" class="btn ghost" id="bCancel" hidden>수정 취소</button>
+            <button type="button" class="btn danger push-right" id="bDelete" hidden>고정 일정 지우기</button>
+          </div>
+          <div class="confirm" id="bDeleteConfirm" hidden>
+            <p id="bDeleteText"></p>
+            <div class="row">
+              <button type="button" class="btn danger" id="bDeleteYes">지우기</button>
+              <button type="button" class="btn" id="bDeleteNo">취소</button>
+            </div>
+          </div>
+        </form>
+      </section>
 
     </section>
 
@@ -301,68 +356,6 @@
       </section>
     </section>
 
-    <!-- 주간 틀 -->
-    <section id="panel-week" role="tabpanel" aria-labelledby="tab-week" hidden>
-      <div id="weekDyn"></div>
-
-      <section class="card" aria-labelledby="blockFormH">
-        <h2 id="blockFormH" tabindex="-1">고정 일정 넣기</h2>
-        <form id="blockForm" novalidate>
-          <div class="grid2">
-            <div class="field">
-              <label for="bName">이름</label>
-              <input id="bName" autocomplete="off" placeholder="예: 자료구조" aria-describedby="bNameErr">
-              <p class="err" id="bNameErr"></p>
-            </div>
-            <div class="field">
-              <label for="bKind">종류</label>
-              <select id="bKind">
-                <option>수업</option><option>통학</option><option>알바</option><option>기타</option>
-              </select>
-            </div>
-          </div>
-          <fieldset class="choice days" id="bDaysSet" aria-describedby="bDaysErr">
-            <legend>요일</legend>
-            <div class="daypick">
-              <label><input type="checkbox" name="bDay" value="1"><span>월</span></label>
-              <label><input type="checkbox" name="bDay" value="2"><span>화</span></label>
-              <label><input type="checkbox" name="bDay" value="3"><span>수</span></label>
-              <label><input type="checkbox" name="bDay" value="4"><span>목</span></label>
-              <label><input type="checkbox" name="bDay" value="5"><span>금</span></label>
-              <label><input type="checkbox" name="bDay" value="6"><span>토</span></label>
-              <label><input type="checkbox" name="bDay" value="0"><span>일</span></label>
-            </div>
-            <p class="err" id="bDaysErr"></p>
-          </fieldset>
-          <div class="grid2">
-            <div class="field">
-              <label for="bStart">시작</label>
-              <input type="time" id="bStart" aria-describedby="bStartErr">
-              <p class="err" id="bStartErr"></p>
-            </div>
-            <div class="field">
-              <label for="bEnd">끝</label>
-              <input type="time" id="bEnd" aria-describedby="bEndErr">
-              <p class="err" id="bEndErr"></p>
-            </div>
-          </div>
-          <div class="row">
-            <button type="submit" class="btn primary" id="bSubmit">고정 일정 넣기</button>
-            <button type="button" class="btn ghost" id="bCancel" hidden>수정 취소</button>
-            <button type="button" class="btn danger push-right" id="bDelete" hidden>고정 일정 지우기</button>
-          </div>
-          <div class="confirm" id="bDeleteConfirm" hidden>
-            <p id="bDeleteText"></p>
-            <div class="row">
-              <button type="button" class="btn danger" id="bDeleteYes">지우기</button>
-              <button type="button" class="btn" id="bDeleteNo">취소</button>
-            </div>
-          </div>
-        </form>
-      </section>
-
-    </section>
-
     <!-- 돌아보기 -->
     <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" hidden>
       <div id="reviewDyn"></div>
@@ -475,7 +468,7 @@
       <li class="g-fixed">
         <span class="g-mark" aria-hidden="true"></span>
         <div><h3>고정 일정</h3>
-          <p>수업·통학·알바처럼 요일과 시각이 정해져 있어 내가 옮길 수 없는 일. 주간 틀에 넣으면 이걸 빼고 남는 시간이 빈 시간이 돼요.</p>
+          <p>수업·통학·알바처럼 요일과 시각이 정해져 있어 내가 옮길 수 없는 일. 캘린더 탭에서 넣으면 이걸 빼고 남는 시간이 빈 시간이 돼요.</p>
           <p class="g-eg">예: 월·수 10:30–11:45 자료구조</p></div>
       </li>
       <li class="g-time">
