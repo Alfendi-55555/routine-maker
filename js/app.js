@@ -26,6 +26,7 @@
     editRecord: null,     // 고치는 중인 기록 id
     routine: null,        // 루틴 탭에서 상세로 연 루틴 id (#routine-<id>)
     editWhere: 'review',  // 기록 고치기 칸을 연 곳: review | detail
+    recLimit: { id: null, n: 10 }, // 루틴 상세 기록 목록에 보이는 개수
     calView: 'week',      // 캘린더 보기: week(기본) | month
     calWeek: null,        // 주 보기에 보이는 주 (월요일)
     calMonth: null,       // 월 보기에 보이는 달 (그달 1일)
@@ -1084,15 +1085,9 @@
       (b.missed - a.missed) || (!!b.tight - !!a.tight) ||
       ((a.anchor.today ? a.anchor.plannedMin : 9999) - (b.anchor.today ? b.anchor.plannedMin : 9999)) ||
       a.r.name.localeCompare(b.r.name));
-    const rest = infos.filter((i) => !i.todo);
-
     if (todo.length) sec.append(h('ul', { class: 'rlist', role: 'list' }, todo.map(todayItem)));
-    else if (!shownId) sec.append(h('p', { class: 'sub' }, '오늘 할 루틴을 모두 했거나 이번 주 횟수를 채웠어요.'));
+    else if (!shownId) sec.append(h('p', { class: 'all-done' }, '오늘은 모든 루틴을 완수했어요!'));
     else sec.append(h('p', { class: 'sub' }, '지금 루틴 말고는 오늘 남은 루틴이 없어요.'));
-
-    if (rest.length) {
-      sec.append(h('p', { class: 'sub' }, '오늘은 쉬어도 돼요: ' + rest.map((i) => i.r.name + ' (' + (i.doneToday ? '오늘 했어요' : i.situation ? '오늘은 상황 없음' : '이번 주 ' + i.done + '/' + i.r.perWeek) + ')').join(', ')));
-    }
     return sec;
   }
 
@@ -1584,9 +1579,12 @@
   }
 
   function recentRecords(r) {
-    const list = state.records.filter((x) => x.routineId === r.id).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)).slice(0, 5);
-    const sec = h('section', { class: 'card', 'aria-labelledby': 'rdRecH' }, h('h3', { id: 'rdRecH' }, '최근 기록'));
-    if (!list.length) { sec.append(h('p', { class: 'sub' }, '아직 기록이 없어요.')); return sec; }
+    const all = state.records.filter((x) => x.routineId === r.id).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+    if (ui.recLimit.id !== r.id) ui.recLimit = { id: r.id, n: 10 };
+    const list = all.slice(0, ui.recLimit.n);
+    const sec = h('section', { class: 'card', 'aria-labelledby': 'rdRecH' },
+      h('div', { class: 'section-head' }, h('h3', { id: 'rdRecH' }, '기록'), h('span', { class: 'sub num' }, all.length + '개')));
+    if (!all.length) { sec.append(h('p', { class: 'sub' }, '아직 기록이 없어요.')); return sec; }
     sec.append(h('ul', { class: 'plain rd-recs' }, list.map((x) => {
       const li = h('li', { id: 'rrec-' + x.id },
         h('div', { class: 'rd-rec' },
@@ -1596,7 +1594,17 @@
       if (ui.editRecord === x.id && ui.editWhere === 'detail') li.append(recordEditForm(x, r));
       return li;
     })));
-    sec.append(h('button', { type: 'button', class: 'btn small', onclick: () => { ui.filter = r.category; ui.showAll = false; switchTab('review', 'recH'); } }, q(r.category) + ' 기록 모두 보기'));
+    if (all.length > list.length) {
+      sec.append(h('button', {
+        type: 'button', class: 'btn small', onclick: () => {
+          const at = list.length;
+          ui.recLimit.n += 10;
+          renderRoutines();
+          const btns = document.querySelectorAll('.rd-recs .edit');
+          if (btns[at]) btns[at].focus();
+        }
+      }, '더 보기 (' + (all.length - list.length) + '개 남음)'));
+    }
     return sec;
   }
 

@@ -592,8 +592,8 @@
     }
     if (obs.dir === 'same') return '최근 5번은 ' + range + ' 사이로, 처음과 비슷해요.';
     var s = '처음 5번은 중앙값 ' + fmt(obs.first) + ', 최근 5번은 ' + fmt(obs.recent) + '이에요.';
-    if (obs.kind === 'fixed' && obs.dir === 'down') s += ' 다음 계획은 ' + round5(obs.recent) + '분으로 잡아도 돼요.';
-    else if (obs.kind === 'none') s += Math.abs(obs.recent - 1) < SAME_BAND ? ' 요즘은 예상과 거의 맞아요.' : '';
+    // 계획을 바꾸자는 말은 여기서 하지 않는다 (그건 루티의 제안 몫)
+    if (obs.kind === 'none') s += Math.abs(obs.recent - 1) < SAME_BAND ? ' 요즘은 예상과 거의 맞아요.' : '';
     else if (obs.dir === 'up') s += ' 내용이나 상황이 달라졌을 수 있어요.';
     else if (obs.kind === 'count') s += ' 같은 분량이면 전보다 시간이 덜 들어요.';
     return s;

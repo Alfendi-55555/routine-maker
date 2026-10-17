@@ -21,7 +21,6 @@
     <div class="brand-row">
       <h1 class="brand">루틴메이커</h1>
       <a class="about" href="intro.html">앱 소개</a>
-      <button type="button" class="about guide-btn" data-guide>가이드</button>
       <button type="button" class="icon-btn settings-btn" id="btnSettings" aria-label="설정" title="설정">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -213,7 +212,7 @@
           </div>
 
           <fieldset class="step kind-pick" id="stepKind" aria-describedby="rKindErr" hidden>
-            <legend><span class="step-n" aria-hidden="true">2</span> 어떤 루틴인가요? <button type="button" class="link-btn guide-link" data-guide>루틴 종류 알아보기</button></legend>
+            <legend><span class="step-n" aria-hidden="true">2</span> 어떤 루틴인가요? <button type="button" class="help-btn" data-guide aria-label="루틴 종류 알아보기" title="루틴 종류 알아보기"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"></circle><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.3-2.5 3.8"></path><path d="M12 17.2h.01"></path></svg></button></legend>
             <div class="kind-cards">
               <label class="kind-card"><input type="radio" name="rKind" value="time">
                 <span class="kc-title">시각 루틴</span><span class="kc-sub">정해진 시각에 해요 · 예: 22:00 영어 단어</span></label>
@@ -459,18 +458,12 @@
 <!-- 가이드: 활동 다섯 가지 -->
 <dialog id="guideDialog" class="dialog guide" aria-labelledby="guideTitle">
   <div class="dialog-head">
-    <h2 id="guideTitle">활동은 다섯 가지예요</h2>
+    <h2 id="guideTitle">루틴은 세 가지예요</h2>
     <button type="button" class="btn ghost small" id="guideClose">닫기</button>
   </div>
   <div class="guide-body">
-    <p class="sub">루틴메이커는 하루의 활동을 다섯 가지로 나눠요. 루틴은 시작 신호에 따라 세 가지예요.</p>
+    <p class="sub">무엇이 시작 신호인지에 따라 나눠요. 수업·알바 같은 고정 일정은 캘린더 탭에, 반복하지 않는 일은 오늘 탭의 "다른 활동 기록하기"에 적어요.</p>
     <ul class="guide-list">
-      <li class="g-fixed">
-        <span class="g-mark" aria-hidden="true"></span>
-        <div><h3>고정 일정</h3>
-          <p>수업·통학·알바처럼 요일과 시각이 정해져 있어 내가 옮길 수 없는 일. 캘린더 탭에서 넣으면 이걸 빼고 남는 시간이 빈 시간이 돼요.</p>
-          <p class="g-eg">예: 월·수 10:30–11:45 자료구조</p></div>
-      </li>
       <li class="g-time">
         <span class="g-mark" aria-hidden="true"></span>
         <div><h3>시각 루틴</h3>
@@ -493,12 +486,6 @@
         <div><h3>아무 때나 루틴</h3>
           <p>시작 신호 없이 빈 시간 아무 때나 하는 루틴. 주 몇 번 할지 정해요.</p>
           <p class="g-eg">예: 스트레칭 주 3회</p></div>
-      </li>
-      <li class="g-other">
-        <span class="g-mark" aria-hidden="true"></span>
-        <div><h3>다른 활동</h3>
-          <p>과제·발표 준비처럼 반복하지 않는 일. 예상 시간과 실제 시간을 재서, 카테고리마다 시간을 얼마나 짧게 잡는지 보여 줘요.</p>
-          <p class="g-eg">오늘 탭의 "다른 활동 기록하기"</p></div>
       </li>
     </ul>
     <p class="sub">모든 루틴에는 최소 시간이 있어요. 타이머가 최소 시간을 넘기면 한 번으로 세고, 그보다 짧게 끝내면 기록만 남아요. 늘 같은 분량인 루틴은 분량을 끝내면 세요.</p>

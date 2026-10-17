@@ -206,7 +206,8 @@ test('관찰 문장에는 판단하는 말을 쓰지 않는다', () => {
     Calc.durationSentence({ ready: false, n: 6, need: 10 }, routine)
   ];
   sentences.forEach(s => assert.doesNotMatch(s, /잘했|훌륭|아쉽|더 줄여|분발|빨라지세요/));
-  assert.match(sentences[0], /다음 계획은 30분/);
+  sentences.forEach(s => assert.doesNotMatch(s, /다음 계획|잡아도 돼요/));
+  assert.match(sentences[0], /최근 5번은 28분/);
   assert.match(sentences[2], /6\/10/);
 });
 

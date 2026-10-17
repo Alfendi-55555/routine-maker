@@ -447,10 +447,8 @@ table.cal { width: 100%; border-collapse: separate; border-spacing: 3px; table-l
 .fchip.past .sq { background: var(--block-past); }
 
 /* 루틴 종류: 호칭 태그, 입력칸 묶음, 상황 버튼, 가이드 */
-.guide-btn { border: 0; background: none; padding: 0; font: inherit; cursor: pointer; }
 .kind-h { font-size: 0.8rem; font-weight: 700; color: var(--teal-ink); margin-top: 6px; }
 .kind-h:first-of-type { margin-top: 0; }
-legend .guide-link { font-size: 0.8rem; margin-left: 6px; }
 .field-label { font-weight: 600; font-size: 0.9rem; }
 .each-note { min-height: 40px; display: flex; align-items: center; padding: 0 10px; border-radius: 8px; background: var(--accent-soft); color: var(--teal-ink); font-size: 0.9rem; font-weight: 600; }
 .kind-tag { font-size: 0.72rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; background: var(--accent-soft); color: var(--teal-ink); white-space: nowrap; }
@@ -467,11 +465,9 @@ legend .guide-link { font-size: 0.8rem; margin-left: 6px; }
 .guide-list h3 { font-size: 0.98rem; margin-bottom: 2px; }
 .guide-list p { font-size: 0.9rem; }
 .g-mark { flex: none; width: 14px; height: 14px; margin-top: 4px; }
-.g-fixed .g-mark { border-radius: 3px; background: var(--block); }
 .g-time .g-mark { border-radius: 50%; background: var(--accent); }
 .g-situation .g-mark { border-radius: 50%; background: var(--teal-mid); }
 .g-anytime .g-mark { border-radius: 50%; border: 2px solid var(--teal-mid); }
-.g-other .g-mark { border-radius: 3px; border: 2px dashed var(--teal-mid); }
 .g-eg { color: var(--muted); font-size: 0.82rem !important; }
 .g-sub { margin: 6px 0 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: 0.86rem; }
 .span2 { grid-column: 1 / -1; }
@@ -703,3 +699,8 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .bsq { width: 12px; height: 12px; border-radius: 3px; background: var(--k); }
 .bmain { min-width: 0; }
 .bsig { display: block; font-size: 0.8rem; }
+
+/* 새 루틴 만들기 2단계의 물음표: 루틴 종류 알아보기 */
+.help-btn { display: inline-grid; place-items: center; width: 32px; height: 32px; margin-left: 2px; vertical-align: middle; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+.help-btn:hover { color: var(--teal-ink); background: var(--accent-soft); }
+.all-done { font-weight: 700; color: var(--teal-ink); }
