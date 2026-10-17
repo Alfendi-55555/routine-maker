@@ -9,7 +9,6 @@
   const BASE_CATEGORIES = ['과제', '공부', '복습', '시험 준비', '팀플', '기타'];
   const TABS = ['today', 'calendar', 'routines', 'review'];
   const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-  const RECORDS_PAGE = 30;
   const KIND_ORDER = ['수업', '통학', '알바', '기타'];
   const KIND_CLASS = { 수업: 'k-class', 통학: 'k-commute', 알바: 'k-work', 기타: 'k-etc' };
   const kindClass = (kind) => KIND_CLASS[kind] || 'k-etc';
@@ -18,15 +17,14 @@
   const ui = {
     tab: 'today',
     panel: null,          // 루틴 항목 안의 작은 입력칸 { routineId, mode: 'start'|'manual' }
-    filter: '전체',
-    showAll: false,
     editBlock: null,
     editRoutine: null,
     pendingImport: null,
     editRecord: null,     // 고치는 중인 기록 id
     routine: null,        // 루틴 탭에서 상세로 연 루틴 id (#routine-<id>)
     editWhere: 'review',  // 기록 고치기 칸을 연 곳: review | detail
-    recLimit: { id: null, n: 10 }, // 루틴 상세 기록 목록에 보이는 개수
+    recLimit: { id: null, n: 10 },
+    revWeek: null,        // 돌아보기에 보이는 주 (월요일) // 루틴 상세 기록 목록에 보이는 개수
     calView: 'week',      // 캘린더 보기: week(기본) | month
     calWeek: null,        // 주 보기에 보이는 주 (월요일)
     calMonth: null,       // 월 보기에 보이는 달 (그달 1일)
@@ -1431,11 +1429,11 @@
 
   // ========== 루틴 ==========
   /* 이번 주 작은 막대: 요일 루틴은 월~일 칸, 주 N회는 N칸, 상황 루틴은 이번 주 상황 수만큼 */
-  function weekStrip(r) {
+  function weekStrip(r, week) {
     const L = nowL();
-    const ws = C.startOfWeek(L.day);
+    const ws = week || C.startOfWeek(L.day);
     const done = C.doneDays(state.records, r.id, ws, C.addDays(ws, 7), L.shift);
-    const todayIdx = C.mondayIndex(L.day);
+    const todayIdx = C.dayKey(ws) === C.dayKey(C.startOfWeek(L.day)) ? C.mondayIndex(L.day) : -1;
     let cells = [];
     const sc = C.scheduleOf(r);
     if (sc === 'days') {
@@ -1448,7 +1446,7 @@
       const n = Object.keys(done).length;
       for (let i = 0; i < r.perWeek; i++) cells.push(i < n ? 'hit' : 'empty');
     } else {
-      const wk = C.situationWeek(r, sitEnv());
+      const wk = C.situationProgress(r, sitEnv(), ws, C.addDays(ws, 7));
       for (let i = 0; i < wk.occ; i++) cells.push(i < wk.hit ? 'hit' : 'empty');
     }
     if (!cells.length) return null;
@@ -2203,20 +2201,106 @@
     });
   }
 
-  // ========== 돌아보기 ==========
+  // ========== 돌아보기: 이번 주 돌아보기 ==========
+  /* 한 주의 루틴별 실천: 요일·주 N회 루틴은 한 날/목표, 상황 루틴은 상황이 생긴 날 중 한 날 */
+  function weekStats(r, ws) {
+    const we = C.addDays(ws, 7);
+    if (C.isSituation(r)) {
+      const p = C.situationProgress(r, sitEnv(), ws, we);
+      return { done: p.hit, target: p.occ, text: p.occ ? p.occ + '번 중 ' + p.hit + '번' : '상황 없음' };
+    }
+    const done = Object.keys(C.doneDays(state.records, r.id, ws, we, shift())).length;
+    const target = weekTarget(r);
+    return { done: Math.min(done, target), target, text: done + '/' + target };
+  }
+  function weekRecords(ws) {
+    const from = C.dayKey(ws), to = C.dayKey(C.addDays(ws, 6)), sh = shift();
+    return state.records.filter((x) => { const k = C.logicalKey(x.startedAt, sh); return k >= from && k <= to; });
+  }
+  function weekTitle(ws) {
+    const we = C.addDays(ws, 6);
+    return (ws.getMonth() + 1) + '월 ' + ws.getDate() + '일 – ' + (we.getMonth() !== ws.getMonth() ? (we.getMonth() + 1) + '월 ' : '') + we.getDate() + '일';
+  }
+
   function renderReview() {
     const box = $('reviewDyn');
-    const nodes = [h('h2', { class: 'sr-only', tabindex: '-1' }, '돌아보기')];
-    if (!state.records.length) {
-      nodes.push(emptyBox('아직 기록이 없어요.', '오늘 탭에서 루틴이나 다른 활동을 시작해 보세요. 끝내면 여기에 쌓여요.',
-        h('button', { type: 'button', class: 'btn', onclick: () => switchTab('today', 'todayH') }, '오늘 탭으로')));
-      box.replaceChildren(...nodes);
+    if (!state.records.length && !state.routines.length) {
+      box.replaceChildren(h('h2', { class: 'sr-only', tabindex: '-1' }, '돌아보기'),
+        emptyBox('아직 기록이 없어요.', '오늘 탭에서 루틴이나 다른 활동을 시작해 보세요. 끝내면 여기에 쌓여요.',
+          h('button', { type: 'button', class: 'btn', onclick: () => switchTab('today', 'todayH') }, '오늘 탭으로')));
       return;
     }
-    nodes.push(h('div', { class: 'cols rv-cols' },
-      h('div', { class: 'col-main' }, recordsSection()),
-      h('aside', { class: 'col-side', 'aria-label': '제안과 요약' }, suggestionSection(), state.routines.length ? routineLinks() : null, ratioSection())));
-    box.replaceChildren(...nodes);
+    const thisWeek = C.startOfWeek(nowL().day);
+    if (!ui.revWeek || ui.revWeek > thisWeek) ui.revWeek = thisWeek;
+    const ws = ui.revWeek, prevWs = C.addDays(ws, -7);
+    const isNow = C.dayKey(ws) === C.dayKey(thisWeek);
+    const move = (n) => { ui.revWeek = C.addDays(ws, 7 * n); renderReview(); const b = $(n < 0 ? 'revPrev' : 'revNext'); if (b && !b.disabled) b.focus(); else $('revTitle').focus(); };
+
+    const head = h('div', { class: 'rv-head' },
+      h('button', { type: 'button', class: 'icon-btn', id: 'revPrev', 'aria-label': '지난주', onclick: () => move(-1) }, svgIcon(ICON_BACK, 18)),
+      h('div', null, h('h2', { id: 'revTitle', tabindex: '-1' }, isNow ? '이번 주 돌아보기' : weekTitle(ws) + ' 돌아보기'), h('p', { class: 'sub' }, weekTitle(ws))),
+      h('button', { type: 'button', class: 'icon-btn', id: 'revNext', 'aria-label': '다음 주', disabled: isNow, onclick: () => move(1) }, svgIcon(ICON_NEXT, 18)));
+
+    // 위의 숫자 칸 (지난주와 나란히, 판단하는 말 없이)
+    const sum = (w) => state.routines.reduce((a, r) => { const s = weekStats(r, w); return { done: a.done + s.done, target: a.target + s.target }; }, { done: 0, target: 0 });
+    const cur = sum(ws), prev = sum(prevWs);
+    const recs = weekRecords(ws), prevRecs = weekRecords(prevWs);
+    const routineMin = (list) => list.filter((x) => x.kind === 'routine').reduce((a, x) => a + x.actualMin, 0);
+    const tasks = recs.filter((x) => x.kind === 'task');
+    const taskRatio = tasks.length ? C.ratioOf(tasks).ratio : null;
+    const streaks = state.routines.map((r) => ({ r, st: C.streak(r, sitEnv()) })).sort((a, b) => b.st.current - a.st.current);
+    const top = streaks[0];
+    const tile = (label, value, note, accent) => h('div', { class: 'card kpi' + (accent ? ' ' + accent : '') },
+      h('span', { class: 'sub' }, label), h('b', null, value), note ? h('span', { class: 'sub kpi-note' }, note) : null);
+    const tiles = h('div', { class: 'kpis' },
+      tile('루틴 실천', cur.done + ' / ' + cur.target + '번', '지난주 ' + prev.done + ' / ' + prev.target + '번'),
+      tile('루틴에 쓴 시간', C.fmtDuration(routineMin(recs)) || '0분', '지난주 ' + (C.fmtDuration(routineMin(prevRecs)) || '0분')),
+      tile('다른 활동 · 예상 대비', taskRatio != null ? taskRatio.toFixed(1) + '배' : '–', tasks.length ? '기록 ' + tasks.length + '개' : '이 주에는 기록이 없어요'),
+      isNow && top && top.st.current
+        ? tile('가장 긴 연속', top.st.current + top.st.unit, top.r.name, 'accent ' + rc(top.r))
+        : tile('기록한 날', new Set(recs.map((x) => C.logicalKey(x.startedAt, shift()))).size + '일', '7일 중'));
+
+    // 루틴별 표
+    const table = state.routines.length ? h('section', { class: 'card', 'aria-labelledby': 'byRoutineH' },
+      h('h3', { id: 'byRoutineH' }, '루틴별'),
+      h('table', { class: 'rv-table' },
+        h('thead', null, h('tr', null, h('th', { scope: 'col' }, '루틴'), h('th', { scope: 'col' }, isNow ? '이번 주' : '그 주'), h('th', { scope: 'col' }, '횟수'),
+          h('th', { scope: 'col' }, '지난주'), isNow ? h('th', { scope: 'col' }, '연속') : null)),
+        h('tbody', null, state.routines.map((r) => {
+          const s = weekStats(r, ws), p = weekStats(r, prevWs);
+          const st = streaks.find((x) => x.r.id === r.id).st;
+          return h('tr', { class: rc(r) },
+            h('th', { scope: 'row' }, h('span', { class: 'rc-dot', 'aria-hidden': 'true' }), ' ',
+              h('button', { type: 'button', class: 'name-link', onclick: () => openRoutine(r.id) }, r.name)),
+            h('td', null, weekStrip(r, ws)),
+            h('td', null, h('b', null, s.text)),
+            h('td', { class: 'sub' }, p.text),
+            isNow ? h('td', null, st.current ? st.current + st.unit : '–') : null);
+        }))),
+      h('p', { class: 'sub' }, '루틴 이름을 누르면 루틴 상세로 가요. 기록 하나하나는 루틴 상세에서 볼 수 있어요.')) : null;
+
+    box.replaceChildren(h('h2', { class: 'sr-only' }, '돌아보기'), head, tiles,
+      h('div', { class: 'cols rv-cols' },
+        h('div', { class: 'col-main' }, table, weekTasks(tasks)),
+        h('aside', { class: 'col-side', 'aria-label': '제안과 배율' }, suggestionSection(), ratioSection())));
+  }
+
+  /* 그 주의 다른 활동 (루틴 기록은 루틴 상세에서 고친다) */
+  function weekTasks(list) {
+    const sec = h('section', { class: 'card', 'aria-labelledby': 'weekTaskH' },
+      h('div', { class: 'section-head' }, h('h3', { id: 'weekTaskH' }, '다른 활동'), h('span', { class: 'sub num' }, list.length + '개')));
+    if (!list.length) { sec.append(h('p', { class: 'sub' }, '이 주에는 다른 활동 기록이 없어요.')); return sec; }
+    sec.append(h('ul', { class: 'plain', id: 'recordList' }, list.slice().sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)).map((r) => {
+      const li = h('li', { class: 'rec', id: 'rec-' + r.id },
+        h('span', { class: 'rec-name' }, r.name),
+        h('span', { class: 'rec-times' }, r.estimateMin + '→' + r.actualMin + '분'),
+        h('span', { class: 'rec-meta' }, r.category + ' · ' + dateText(r.startedAt) + ' ' + clockText(r.startedAt),
+          r.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null),
+        h('span', { class: 'rec-del' }, pencilBtn(q(r.name) + ' ' + dateText(r.startedAt) + ' 기록 고치기', () => (ui.editRecord === r.id ? closeRecordEdit(r.id) : openRecordEdit(r.id, 'review')), 'edit')));
+      if (ui.editRecord === r.id && ui.editWhere === 'review') li.append(recordEditForm(r, null));
+      return li;
+    })));
+    return sec;
   }
 
   // ---------- 규칙 다듬기 제안 (루티) ----------
@@ -2373,15 +2457,6 @@
     });
   }
 
-  /* 루틴마다 변화·기록 달력은 루틴 상세에 있다 */
-  function routineLinks() {
-    return h('section', { class: 'section', 'aria-labelledby': 'obsH' },
-      h('h3', { id: 'obsH' }, '루틴별로 보기'),
-      h('p', { class: 'sub' }, '걸린 시간의 변화, 지난 5주 기록, 시작까지 걸린 시간은 루틴마다 자세히 볼 수 있어요.'),
-      h('div', { class: 'rlinks' }, state.routines.map((r) =>
-        h('button', { type: 'button', class: 'rlink ' + rc(r), onclick: () => openRoutine(r.id) }, h('span', { class: 'rc-dot', 'aria-hidden': 'true' }), r.name))));
-  }
-
   function ratioSection() {
     const stats = C.categoryStats(state.records);
     const max = Math.max(...stats.map((s) => Math.max(s.est, s.act) / s.n));
@@ -2402,49 +2477,6 @@
             ? ratioText(s.ratio) + ' · 기록 ' + s.n + '개, 평균 예상 ' + Math.round(avgE) + '분 → 실제 ' + Math.round(avgA) + '분'
             : '기록 ' + s.n + '개 · 3개가 쌓이면 배율을 보여 드려요'));
       })));
-  }
-
-  function recordsSection() {
-    const cats = ['전체'].concat([...new Set(state.records.map((r) => r.category))]);
-    if (!cats.includes(ui.filter)) ui.filter = '전체';
-    const chips = h('div', { class: 'chips', role: 'group', 'aria-label': '카테고리로 거르기' }, cats.map((c) =>
-      h('button', {
-        type: 'button', 'aria-pressed': String(c === ui.filter),
-        onclick: () => { ui.filter = c; ui.showAll = false; renderReview(); const b = document.querySelector('#reviewDyn .chips [aria-pressed="true"]'); if (b) b.focus(); }
-      }, c)));
-    const list = state.records.filter((r) => ui.filter === '전체' || r.category === ui.filter)
-      .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
-    const shown = ui.showAll ? list : list.slice(0, RECORDS_PAGE);
-
-    const sec = h('section', { class: 'card', 'aria-labelledby': 'recH' },
-      h('div', { class: 'section-head' }, h('h3', { id: 'recH' }, '기록'), h('span', { class: 'sub num' }, list.length + '개')),
-      chips);
-    if (!list.length) {
-      sec.append(emptyBox(q(ui.filter) + ' 기록이 없어요.', '다른 카테고리를 고르거나 전체를 보세요.'));
-      return sec;
-    }
-    sec.append(h('ul', { class: 'plain', id: 'recordList' }, shown.map((r) => {
-      const routine = r.routineId ? findRoutine(r.routineId) : null;
-      const kind = r.kind === 'task' ? '다른 활동' : (r.version === 'min' ? '루틴 · 최소' : C.countsAsDone(r) ? '루틴' : '루틴 · 최소 미만');
-      const amountUnit = routine && routine.measure.unit ? routine.measure.unit : '';
-      const label = q(r.name) + ' ' + dateText(r.startedAt);
-      const li = h('li', { class: 'rec', id: 'rec-' + r.id },
-        h('span', { class: 'rec-name' }, r.name),
-        h('span', { class: 'rec-times' }, r.estimateMin + '→' + r.actualMin + '분'),
-        h('span', { class: 'rec-meta' }, r.category + ' · ' + dateText(r.startedAt) + ' · ' + kind +
-          (r.amount ? ' · ' + r.amount + amountUnit : ''),
-          r.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null,
-          r.edited ? h('span', { class: 'tag' }, '고침') : null),
-        h('span', { class: 'rec-del' }, pencilBtn(label + ' 기록 고치기', () => (ui.editRecord === r.id ? closeRecordEdit(r.id) : openRecordEdit(r.id, 'review')), 'edit')));
-      if (ui.editRecord === r.id && ui.editWhere === 'review') li.append(recordEditForm(r, routine));
-      return li;
-    })));
-    if (list.length > shown.length) {
-      sec.append(h('button', {
-        type: 'button', class: 'btn', onclick: () => { ui.showAll = true; renderReview(); const items = document.querySelectorAll('#recordList .rec-del .edit'); if (items[RECORDS_PAGE]) items[RECORDS_PAGE].focus(); }
-      }, '더 보기 (' + (list.length - shown.length) + '개 남음)'));
-    }
-    return sec;
   }
 
   function recordItem(id) { return $((ui.editWhere === 'detail' ? 'rrec-' : 'rec-') + id); }
@@ -2618,7 +2650,7 @@
     $('btnClearNo').addEventListener('click', () => { $('clearConfirm').hidden = true; $('btnClear').focus(); });
     $('btnClearYes').addEventListener('click', () => {
       state = S.empty();
-      ui.panel = null; ui.filter = '전체'; ui.editRecord = null;
+      ui.panel = null; ui.revWeek = null; ui.editRecord = null;
       resetBlockForm();
       resetRoutineForm();
       $('clearConfirm').hidden = true;
@@ -2641,7 +2673,7 @@
 
   function applyImport(d) {
     state = normalizeState(d);
-    ui.panel = null; ui.filter = '전체'; ui.editRecord = null;
+    ui.panel = null; ui.revWeek = null; ui.editRecord = null;
     resetBlockForm();
     resetRoutineForm();
     if (commit()) showStatus('info', '기록을 가져왔어요.', countsText(state));

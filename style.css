@@ -730,7 +730,6 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .cols { display: grid; gap: 20px; min-width: 0; }
 .col-main, .col-side { display: grid; gap: 20px; align-content: start; min-width: 0; }
 .today-cols .col-side { display: none; }         /* 휴대폰에서는 오른쪽 칸(이번 주·제안)을 보이지 않음 */
-.rv-cols .col-side { order: -1; }                /* 휴대폰 돌아보기: 제안·요약을 기록 위에 */
 .ws-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; }
 .ws-row .rc-dot { width: 10px; height: 10px; }
 .ws-main { display: grid; gap: 4px; min-width: 0; font-size: 0.9rem; font-weight: 600; }
@@ -761,7 +760,6 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 
   .wrap { grid-column: 2; grid-row: 1; max-width: 1240px; width: 100%; margin: 0; padding: 24px 32px 48px; }
   .cols { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
-  .rv-cols .col-side { order: 0; }
 
   /* 오늘: 시간 막대를 크게, 칸에 이름 */
   .today-cols .col-side { display: grid; }
@@ -795,4 +793,28 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
   li.rec .rec-meta { grid-column: 2; grid-row: 1; }
   li.rec .rec-times { grid-column: 3; grid-row: 1; }
   li.rec .rec-del { grid-column: 4; grid-row: 1; }
+}
+
+/* 돌아보기: 이번 주 돌아보기 */
+.rv-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; text-align: center; }
+.rv-head h2 { font-size: 1.25rem; }
+.rv-head .icon-btn[disabled] { opacity: 0.35; cursor: default; }
+.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.kpi { gap: 0; padding: 12px 14px; }
+.kpi b { font-size: 1.3rem; line-height: 1.35; }
+.kpi .kpi-note { font-size: 0.78rem; }
+.kpi.accent { background: var(--rc-soft); border-color: transparent; }
+.rv-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.rv-table th, .rv-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.rv-table thead th { font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+.rv-table tbody th { font-weight: 600; }
+.rv-table tbody th .rc-dot { display: inline-block; width: 10px; height: 10px; vertical-align: 0; }
+.rv-table tr:last-child > * { border-bottom: 0; }
+@media (max-width: 520px) { .rv-table td:nth-child(2) { display: none; } .rv-table thead th:nth-child(2) { display: none; } }
+@media (min-width: 1024px) {
+  .rv-head { grid-template-columns: auto auto auto 1fr; text-align: left; }
+  .rv-head h2 { font-size: 1.5rem; }
+  .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .kpi b { font-size: 1.6rem; }
+  .rv-cols { grid-template-columns: minmax(0, 1fr) 380px; }
 }
