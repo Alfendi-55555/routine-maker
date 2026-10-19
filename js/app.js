@@ -25,7 +25,8 @@
     editWhere: 'review',  // 기록 고치기 칸을 연 곳: review | detail
     recLimit: { id: null, n: 10 },
     revWeek: null,
-    gapOpen: null,        // 돌아보기 예상과 실제에서 펼친 다른 활동 카테고리        // 돌아보기에 보이는 주 (월요일) // 루틴 상세 기록 목록에 보이는 개수
+    gapOpen: null,
+    gapHelp: false,       // 예상과 실제 안내를 펼쳤는지        // 돌아보기 예상과 실제에서 펼친 다른 활동 카테고리        // 돌아보기에 보이는 주 (월요일) // 루틴 상세 기록 목록에 보이는 개수
     calView: 'week',      // 캘린더 보기: week(기본) | month
     calWeek: null,        // 주 보기에 보이는 주 (월요일)
     calMonth: null,       // 월 보기에 보이는 달 (그달 1일)
@@ -430,7 +431,6 @@
       h('span', { class: 'lg-block' }, '고정 일정'), h('span', { class: 'lg-rec' }, '한 루틴(루틴 색)'),
       h('span', { class: 'lg-plan' }, '할 차례'), h('span', { class: 'lg-task' }, '다른 활동'), h('span', { class: 'lg-now' }, '지금'));
     grid.append(...[legend,
-      h('p', { class: 'sub' }, '칸을 누르면 그 루틴이나 고정 일정이 열려요. 날짜를 누르면 그날을 ' + (isWide() ? '오른쪽에서' : '아래에서') + ' 자세히 봐요.'),
       holidays.status === 'ok' ? null : h('p', { class: 'hint' }, holidayStatusText())].filter(Boolean));
     return [grid];
   }
@@ -438,8 +438,7 @@
   /* 매주 반복되는 고정 일정 목록 (예전 주간 틀). 이걸 빼고 남는 시간이 빈 시간 */
   function blockList() {
     const sec = h('section', { class: 'card', 'aria-labelledby': 'blocksH' },
-      h('div', { class: 'section-head' }, h('h3', { id: 'blocksH' }, '고정 일정' + (state.blocks.length ? ' ' + state.blocks.length + '개' : '')),
-        h('span', { class: 'sub' }, '매주 반복 · 빼고 남는 시간이 빈 시간')));
+      h('div', { class: 'section-head' }, h('h3', { id: 'blocksH' }, '고정 일정' + (state.blocks.length ? ' ' + state.blocks.length + '개' : ''))));
     if (!state.blocks.length) {
       sec.append(h('p', { class: 'sub' }, '수업, 통학, 알바처럼 내가 옮길 수 없는 일정을 넣어 보세요.'));
     } else {
@@ -998,7 +997,7 @@
     if (!n) return null;
     return h('section', { class: 'ruti-card', 'aria-labelledby': 'todaySugH' },
       rutiFace(36),
-      h('div', { class: 'ruti-main' }, h('h3', { id: 'todaySugH' }, '루티의 제안 ' + n + '개'), h('p', { class: 'sub' }, '기록을 보고 규칙을 다듬을 곳을 골랐어요.')),
+      h('div', { class: 'ruti-main' }, h('h3', { id: 'todaySugH' }, '루티의 제안 ' + n + '개')),
       h('button', { type: 'button', class: 'btn small primary', onclick: (ev) => openSuggestions(ev.currentTarget) }, '보기'));
   }
   /* 데스크톱 왼쪽 메뉴의 상황 버튼 (오늘 탭과 같은 동작) */
@@ -1532,7 +1531,7 @@
     if (!state.routines.length) {
       nodes.push(emptyBox('아직 루틴이 없어요.', '위의 ‘새 루틴 만들기’로 주 1회처럼 작게 하나 만들어 보세요. 한 번에 한두 개로 시작하는 편이 오래가요.'));
     } else {
-      nodes.push(h('div', { class: 'section-head' }, h('h3', null, '내 루틴 ' + state.routines.length + '개'), h('span', { class: 'sub' }, '눌러서 자세히 보기')));
+      nodes.push(h('div', { class: 'section-head' }, h('h3', null, '내 루틴 ' + state.routines.length + '개')));
       nodes.push(h('ul', { class: 'rcards', role: 'list' }, state.routines.map((r) => h('li', null,
         h('button', { type: 'button', class: 'rcard ' + rc(r), id: 'rc-' + r.id, onclick: () => openRoutine(r.id) },
           h('span', { class: 'rc-dot', 'aria-hidden': 'true' }),
@@ -2354,8 +2353,7 @@
             h('td', null, h('b', null, s.text)),
             h('td', { class: 'sub' }, p.text),
             isNow ? h('td', null, st.current ? st.current + st.unit : '–') : null);
-        }))),
-      h('p', { class: 'sub' }, '루틴 이름을 누르면 루틴 상세로 가요. 기록 하나하나는 루틴 상세에서 볼 수 있어요.')) : null;
+        })))) : null;
 
     box.replaceChildren(h('h2', { class: 'sr-only' }, '돌아보기'), head, tiles,
       h('div', { class: 'cols rv-cols' },
@@ -2381,7 +2379,8 @@
   function gapSection() {
     const acts = C.activityStats(state.records, state.routines).filter((a) => a.recs.length);
     const sec = h('section', { class: 'card gap-card', 'aria-labelledby': 'gapH' },
-      h('div', { class: 'section-head' }, h('h3', { id: 'gapH' }, '예상과 실제'), h('span', { class: 'sub' }, '활동마다 최근 ' + C.RECENT + '번 기준')));
+      h('div', { class: 'section-head' }, h('h3', { id: 'gapH', class: 'with-help' }, '예상과 실제', helpBtn())));
+    if (ui.gapHelp) sec.append(gapHelp());
     const ready = acts.filter((a) => a.box && a.box.n >= C.CALIBRATE_FROM);
     if (!ready.length) { sec.append(h('p', { class: 'sub' }, '한 활동에 기록이 3개 이상 쌓이면 예상과 실제가 얼마나 다른지 보여 드려요.')); return sec; }
     // 막대 길이는 배율의 로그 (2배 늦음과 절반 만에 끝남이 같은 길이). 가장 긴 막대에 맞추되 최소 ±50%
@@ -2423,21 +2422,42 @@
 
     sec.append(
       h('div', { class: 'bx-axis bx-dir', 'aria-hidden': 'true' }, h('span'), h('div', null, h('span', null, '← 예상보다 빨리'), h('span', null, '예상대로'), h('span', null, '예상보다 오래 →')), h('span')),
-      h('ul', { class: 'plain bx-list' }, rows),
-      h('p', { class: 'sub' }, '루틴은 기본 시간이 예상이고, 시간을 바꿨다면 바꾼 뒤 기록만 써요. 최소 시간 전에 끝낸 기록과 그만둔 일은 빼요. 앱은 이 숫자로 다음 예상을 보정해요.'));
-    const stopped = state.records.filter((rec) => !C.finished(rec)).length;
-    if (stopped) sec.append(h('p', { class: 'sub' }, '그만둔 일 ' + stopped + '개는 끝까지 하지 않아서 몇 번인지만 세요.'));
+      h('ul', { class: 'plain bx-list' }, rows));
     const bt = C.backtest(state.records, state.routines);
     if (bt) sec.append(btLine(bt, '전체'));
     return sec;
+  }
+
+  /* 예상과 실제 안내: 물음표를 누르면 펼친다 */
+  function helpBtn() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '18'); svg.setAttribute('height', '18'); svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.8'); svg.setAttribute('stroke-linecap', 'round');
+    ['M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.3-2.5 3.8', 'M12 17.2h.01'].forEach((d) => { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); svg.append(p); });
+    const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '9.5'); svg.prepend(c);
+    return h('button', {
+      type: 'button', class: 'help-btn', id: 'gapHelpBtn', 'aria-label': '예상과 실제 읽는 법', 'aria-expanded': String(!!ui.gapHelp), 'aria-controls': 'gapHelp',
+      onclick: () => { ui.gapHelp = !ui.gapHelp; renderReview(); $('gapHelpBtn').focus(); }
+    }, svg);
+  }
+  function gapHelp() {
+    const stopped = state.records.filter((rec) => !C.finished(rec)).length;
+    return h('div', { class: 'help-box', id: 'gapHelp' },
+      h('ul', null,
+        h('li', null, '활동마다 실제 시간이 예상과 얼마나 달랐는지예요. 가운데 선이 예상대로이고, 오른쪽으로 뻗으면 예상보다 오래, 왼쪽이면 빨리 끝난 거예요.'),
+        h('li', null, '최근 ' + C.RECENT + '번 기록의 가운데 값이에요. 앱은 이 숫자로 다음 예상을 보정해요 (기록 3개부터).'),
+        h('li', null, '루틴은 기본 시간이 예상이고, 시간을 바꿨다면 바꾼 뒤 기록만 써요. 다른 활동은 카테고리마다 묶어요.'),
+        h('li', null, '최소 시간 전에 끝낸 기록과 그만둔 일은 빼요' + (stopped ? ' (그만둔 일 ' + stopped + '개)' : '') + '.'),
+        h('li', null, '루틴을 누르면 루틴 상세, 다른 활동을 누르면 예상–실제 그림이 펼쳐져요. 그림의 점 하나가 기록 하나이고, 대각선보다 위면 예상보다 오래 걸린 거예요.'),
+        h('li', null, '앱 보정이 도움이 됐나: 기록마다 그 이전 기록만으로 앱 예상을 다시 계산해서, 내 예상과 어느 쪽이 실제에 가까웠는지 비교해요.')));
   }
 
   /* 앱 보정 효과 한 줄 */
   function btLine(bt, scope) {
     return h('div', { class: 'bt' },
       h('span', { class: 'label' }, '앱 보정이 도움이 됐나' + (scope ? ' · ' + scope : '')),
-      h('p', null, '내 예상대로였다면 보통 ', h('b', null, Math.round(bt.mine * 100) + '%'), ' 빗나갔고, 앱 예상은 ', h('b', null, Math.round(bt.app * 100) + '%'), ' 빗나갔어요.'),
-      h('p', { class: 'sub' }, '기록마다 그 이전 기록만으로 앱 예상을 다시 계산해서 비교했어요 (보정이 있었던 기록 ' + bt.n + '개).'));
+      h('p', null, '내 예상대로였다면 보통 ', h('b', null, Math.round(bt.mine * 100) + '%'), ' 빗나갔고, 앱 예상은 ', h('b', null, Math.round(bt.app * 100) + '%'), ' 빗나갔어요 (기록 ' + bt.n + '개).'));
   }
 
   /* 다른 활동 카테고리 하나: 매번 예상이 다르니 예상(가로)·실제(세로) 산점도로 */
@@ -2467,7 +2487,7 @@
       c.append(el('title', {}, v.name + ' · 예상 ' + v.estimateMin + '분 → 실제 ' + v.actualMin + '분'));
       svg.append(c);
     });
-    box.append(svg, h('p', { class: 'sub' }, '점 하나가 기록 하나예요. 대각선(예상 = 실제)보다 위면 예상보다 오래 걸린 거예요. 기록 ' + recs.length + '개 중 ' + above + '개.'));
+    box.append(svg);
     const bt = C.backtest(state.records, state.routines, (rec) => !rec.routineId && rec.category === a.id);
     if (bt) box.append(btLine(bt, a.name));
     return box;
@@ -2570,7 +2590,7 @@
       rutiFace(44),
       h('div', { class: 'ruti-main' },
         h('h3', { id: 'suggestH', tabindex: '-1' }, n ? '루티가 규칙을 다듬을 제안 ' + n + '개를 가져왔어요' : '루티가 전할 소식이 있어요'),
-        h('p', { class: 'sub' }, '기록을 보고 고르면 좋을 것만 골랐어요.')),
+),
       h('button', { type: 'button', class: 'btn small primary', onclick: (ev) => openSuggestions(ev.currentTarget) }, n ? '제안 보기' : '보기'));
   }
 

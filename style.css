@@ -851,3 +851,8 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .bx-axis { min-height: 18px; }
 @media (max-width: 520px) { .bx-row, .bx-axis { grid-template-columns: 84px minmax(0, 1fr) 64px; column-gap: 6px; } .bx-name .sub { display: none; } }
 .bx-dir > div { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted); }
+
+/* 물음표로 펼치는 안내 */
+.with-help { display: flex; align-items: center; gap: 2px; }
+.help-box { padding: 10px 14px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 0.86rem; }
+.help-box ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; }
