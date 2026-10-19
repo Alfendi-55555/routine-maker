@@ -609,3 +609,39 @@ test('저장 검사: 시간 변경 이력과 앱 예상', () => {
   d.routines[0].history[0].by = 'robot';
   assert.equal(Store.validate(d), false);
 });
+
+// ---------- 예상과 실제: 로그 중앙값, 그만둔 일, 보정 효과 ----------
+test('배율: 로그 중앙값과 가운데 절반 범위', () => {
+  // 2배 늦음과 0.5배 빠름은 같은 크기 → 중앙값 1배
+  const r = Calc.ratioOf([rec({ estimateMin: 30, actualMin: 60 }), rec({ estimateMin: 30, actualMin: 30 }), rec({ estimateMin: 30, actualMin: 15 })]);
+  assert.equal(r.ratio, 1);
+  assert.ok(r.lo < 1 && r.hi > 1);
+  // 긴 일 하나가 전체를 좌우하지 않는다 (합 ÷ 합이면 3.8배)
+  const s = Calc.ratioOf([rec({ estimateMin: 10, actualMin: 12 }), rec({ estimateMin: 10, actualMin: 12 }), rec({ estimateMin: 60, actualMin: 300 })]);
+  assert.equal(s.ratio, 1.2);
+});
+
+test('그만둔 일: 횟수·보정·배율에서 빠진다', () => {
+  const stopped = rec({ outcome: 'stopped', actualMin: 90 });
+  assert.equal(Calc.countsAsDone(stopped), false);
+  const rs = [rec({ actualMin: 30 }), rec({ actualMin: 30 }), rec({ actualMin: 30 }), stopped];
+  assert.equal(Calc.calibration(rs, { routineId: 'r1', category: '공부' }).n, 3);
+  assert.equal(Calc.categoryStats(rs)[0].n, 3);
+});
+
+test('보정 효과 확인: 늘 1.5배 걸리는 사람은 앱 예상이 더 가깝다', () => {
+  const rs = [1, 2, 3, 4, 5, 6, 7, 8].map((d) => rec({ kind: 'task', routineId: null, category: '과제', estimateMin: 40, actualMin: 60, startedAt: iso(2026, 10, d) }));
+  const bt = Calc.backtest(rs, []);
+  assert.equal(bt.n, 5); // 앞의 3개는 보정할 기록이 없음
+  assert.ok(Math.abs(bt.mine - 1 / 3) < 1e-9);
+  assert.equal(bt.app, 0);
+  assert.equal(Calc.backtest(rs.slice(0, 4), []), null);
+});
+
+test('저장 검사: 그만둔 일', () => {
+  const d = Store.empty();
+  d.records.push(rec({ outcome: 'stopped' }));
+  assert.equal(Store.validate(d), true);
+  d.records[0].outcome = 'paused';
+  assert.equal(Store.validate(d), false);
+});

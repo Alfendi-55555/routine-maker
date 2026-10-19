@@ -827,3 +827,16 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 }
 .tbars .tchange { flex: none; align-self: stretch; width: 0; border-left: 2px dashed var(--teal-ink); margin: 0 -2px; }
 .locked { margin: 0; min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-weight: 600; }
+
+/* 돌아보기: 예상과 실제 산점도 */
+.scatter { width: 100%; max-width: 520px; height: auto; display: block; margin: 0 auto; }
+.sc-grid { stroke: var(--line); stroke-width: 1; }
+.sc-diag { stroke: var(--ink); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.sc-tick { font-size: 9px; fill: var(--muted); }
+.sc-axis { font-size: 10px; font-weight: 700; fill: var(--muted); }
+.sc-dot { fill: var(--rc); fill-opacity: 0.75; stroke: var(--surface); stroke-width: 0.8; }
+.sc-dot.task { fill: var(--teal-mid); }
+.gap-big { font-size: 1.05rem; }
+.gap-big b { font-size: 1.35rem; }
+.bt { display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
+.bt .label { font-size: 0.78rem; font-weight: 700; color: var(--teal-ink); }

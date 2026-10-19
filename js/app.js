@@ -388,7 +388,7 @@
         const label = clockText(r.startedAt) + ' ' + r.name + ' ' + r.actualMin + '분' + (C.countsAsDone(r) ? '' : ' (최소 미만)');
         items.push(h(routine ? 'button' : 'span', {
           type: routine ? 'button' : null,
-          class: 'ev rec ' + (routine ? rc(routine) : 'task') + (C.countsAsDone(r) ? '' : ' short'),
+          class: 'ev rec ' + (routine ? rc(routine) : 'task') + (C.countsAsDone(r) || (!routine && C.finished(r)) ? '' : ' short'),
           style: 'top:' + top + 'px;height:' + Math.max(7, hh - 1) + 'px', title: label,
           'aria-label': routine ? label + ', 루틴 자세히 보기' : null,
           onclick: routine ? () => openRoutine(routine.id) : null
@@ -488,7 +488,7 @@
       h('div', { class: 'obs' }, h('span', { class: 'label' }, '기록'),
         recs.length
           ? h('ul', { class: 'plain' }, recs.map((r) => h('li', { class: 'gap-row' },
-            h('span', null, h('span', { class: 'dot rc ' + (r.routineId && findRoutine(r.routineId) ? rc(findRoutine(r.routineId)) : 'task'), 'aria-hidden': 'true' }), ' ', h('span', { class: 'num' }, clockText(r.startedAt)), ' ' + r.name + (r.version === 'min' ? ' (최소)' : '') + (C.countsAsDone(r) ? '' : ' (최소 미만)')),
+            h('span', null, h('span', { class: 'dot rc ' + (r.routineId && findRoutine(r.routineId) ? rc(findRoutine(r.routineId)) : 'task'), 'aria-hidden': 'true' }), ' ', h('span', { class: 'num' }, clockText(r.startedAt)), ' ' + r.name + (r.version === 'min' ? ' (최소)' : '') + (!C.finished(r) ? ' (그만둠)' : C.countsAsDone(r) ? '' : ' (최소 미만)')),
             h('span', { class: 'num' }, r.actualMin + '분'))))
           : h('p', { class: 'sub' }, '이날 기록이 없어요.')));
   }
@@ -848,10 +848,28 @@
       $('activeButtons').hidden = false;
       $('btnAbandon').focus();
     });
+    // 그만둔 일도 남긴다: 예상보다 길어져서 그만둔 일이 빠지면 차이가 실제보다 작아 보이니까 (횟수·비교에서는 뺌)
     $('btnAbandonYes').addEventListener('click', () => {
+      const a = state.active;
+      if (!a) return;
+      const end = new Date();
+      const actual = C.actualMinutes(a.startedAt, end);
+      const rec = {
+        id: a.id, kind: a.kind, routineId: a.routineId || null, name: a.name, category: a.category,
+        version: a.version || null, estimateMin: a.estimateMin, actualMin: actual, amount: null,
+        plannedStartAt: a.plannedStartAt || null, startedAt: a.startedAt, endedAt: end.toISOString(), source: 'timer', outcome: 'stopped'
+      };
+      if (a.appMin) rec.appMin = a.appMin;
+      state.records.push(rec);
+      state.active = null;
+      if (commit()) showStatus('info', q(rec.name) + ' 그만둔 일로 남겼어요.', actual + '분 하고 그만뒀어요. 횟수와 예상 비교에서는 빠져요.');
+      renderAll();
+      afterActiveEnds();
+    });
+    $('btnAbandonDiscard').addEventListener('click', () => {
       const name = state.active ? state.active.name : '';
       state.active = null;
-      if (commit()) showStatus('info', q(name) + ' 기록하지 않고 그만뒀어요.');
+      if (commit()) showStatus('info', q(name) + ' 기록 없이 지웠어요.');
       renderAll();
       afterActiveEnds();
     });
@@ -1346,13 +1364,13 @@
   function updateTaskHint() {
     const cat = $('tCategory').value.trim() || '기타';
     const est = Number($('tEstimate').value);
-    const same = state.records.filter((r) => r.category === cat);
+    const same = state.records.filter((r) => r.category === cat && C.finished(r));
     let text;
     if (same.length < C.CALIBRATE_FROM) {
       text = q(cat) + ' 기록이 ' + (same.length ? same.length + '개예요' : '아직 없어요') + '. 3개 이상 쌓이면 실제로 걸릴 시간을 알려 드려요.';
     } else {
       const cal = C.ratioOf(same);
-      text = q(cat) + ' 카테고리는 보통 ' + ratioText(cal.ratio) + ' 걸렸어요.';
+      text = q(cat) + ' 카테고리는 보통 ' + ratioText(cal.ratio) + ' 걸렸어요' + (cal.hi > cal.lo ? ' (대부분 ' + cal.lo.toFixed(1) + '~' + cal.hi.toFixed(1) + '배)' : '') + '.';
       if (!C.checkMinutes($('tEstimate').value)) text += ' ' + est + '분으로 잡으면 실제로는 약 ' + C.round5(est * cal.ratio) + '분 걸릴 거예요.';
     }
     const L = nowL();
@@ -1740,7 +1758,7 @@
       const li = h('li', { id: 'rrec-' + x.id },
         h('div', { class: 'rd-rec' },
           h('span', null, dateText(x.startedAt) + ' ', h('span', { class: 'num' }, clockText(x.startedAt))),
-          h('span', null, h('b', null, x.actualMin + '분'), C.countsAsDone(x) ? null : h('span', { class: 'tag' }, '최소 미만'), x.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null),
+          h('span', null, h('b', null, x.actualMin + '분'), !C.finished(x) ? h('span', { class: 'tag' }, '그만둠') : C.countsAsDone(x) ? null : h('span', { class: 'tag' }, '최소 미만'), x.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null),
           pencilBtn(q(x.name) + ' ' + dateText(x.startedAt) + ' 기록 고치기', () => (ui.editRecord === x.id ? closeRecordEdit(x.id) : openRecordEdit(x.id, 'detail')), 'edit')));
       if (ui.editRecord === x.id && ui.editWhere === 'detail') li.append(recordEditForm(x, r));
       return li;
@@ -2332,8 +2350,55 @@
 
     box.replaceChildren(h('h2', { class: 'sr-only' }, '돌아보기'), head, tiles,
       h('div', { class: 'cols rv-cols' },
-        h('div', { class: 'col-main' }, table, weekTasks(tasks)),
+        h('div', { class: 'col-main' }, gapSection(), table, weekTasks(tasks)),
         h('aside', { class: 'col-side', 'aria-label': '제안과 배율' }, suggestionSection(), ratioSection())));
+  }
+
+  /* 예상과 실제: 지금까지의 기록을 예상(가로)·실제(세로) 로그 눈금 위에 점으로. 대각선 위 = 예상보다 오래 걸림 */
+  function gapSection() {
+    const recs = state.records.filter((x) => C.finished(x) && x.estimateMin > 0 && x.actualMin > 0);
+    const stopped = state.records.filter((x) => !C.finished(x)).length;
+    const sec = h('section', { class: 'card gap-card', 'aria-labelledby': 'gapH' },
+      h('div', { class: 'section-head' }, h('h3', { id: 'gapH' }, '예상과 실제'), h('span', { class: 'sub' }, '지금까지 기록 ' + recs.length + '개')));
+    if (recs.length < C.CALIBRATE_FROM) { sec.append(h('p', { class: 'sub' }, '기록이 3개 이상 쌓이면 예상과 실제가 얼마나 다른지 보여 드려요.')); return sec; }
+    const all = C.ratioOf(recs);
+    const bt = C.backtest(state.records, state.routines);
+    // 로그 눈금 범위: 5분 ~ 가장 긴 기록
+    const lo = 5, hi = Math.max(60, ...recs.map((x) => Math.max(x.estimateMin, x.actualMin)));
+    const W = 300, H = 220, P = 30;
+    const sx = (v) => P + (Math.log(Math.max(lo, v)) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) * (W - P - 8);
+    const sy = (v) => H - P - (Math.log(Math.max(lo, v)) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) * (H - P - 8);
+    const NS = 'http://www.w3.org/2000/svg';
+    const el = (tag, attrs, text) => { const n = document.createElementNS(NS, tag); Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v)); if (text != null) n.textContent = text; return n; };
+    const above = recs.filter((x) => x.actualMin > x.estimateMin).length;
+    const svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'scatter', role: 'img',
+      'aria-label': '예상과 실제 산점도. 기록 ' + recs.length + '개 중 ' + above + '개가 예상보다 오래 걸렸고, 보통 예상의 ' + all.ratio.toFixed(1) + '배였어요.' });
+    [10, 30, 60, 120, 240, 480].filter((t) => t >= lo && t <= hi).forEach((t) => {
+      svg.append(el('line', { x1: sx(t), x2: sx(t), y1: 8, y2: H - P, class: 'sc-grid' }), el('line', { x1: P, x2: W - 8, y1: sy(t), y2: sy(t), class: 'sc-grid' }),
+        el('text', { x: sx(t), y: H - P + 14, 'text-anchor': 'middle', class: 'sc-tick' }, t >= 60 ? (t / 60) + '시간' : t + '분'),
+        el('text', { x: P - 4, y: sy(t) + 3, 'text-anchor': 'end', class: 'sc-tick' }, t >= 60 ? (t / 60) + '시간' : t + '분'));
+    });
+    svg.append(el('line', { x1: sx(lo), y1: sy(lo), x2: sx(hi), y2: sy(hi), class: 'sc-diag' }),
+      el('text', { x: sx(hi) - 4, y: sy(hi) + 14, 'text-anchor': 'end', class: 'sc-tick' }, '예상 = 실제'),
+      el('text', { x: W - 8, y: H - 4, 'text-anchor': 'end', class: 'sc-axis' }, '예상 →'),
+      el('text', { x: 4, y: 12, class: 'sc-axis' }, '↑ 실제'));
+    recs.forEach((x) => {
+      const r = x.routineId ? findRoutine(x.routineId) : null;
+      const c = el('circle', { cx: sx(x.estimateMin), cy: sy(x.actualMin), r: 3.5, class: 'sc-dot ' + (r ? rc(r) : 'task') });
+      c.append(el('title', {}, x.name + ' · 예상 ' + x.estimateMin + '분 → 실제 ' + x.actualMin + '분'));
+      svg.append(c);
+    });
+    sec.append(svg,
+      h('p', { class: 'gap-big' }, '보통 예상의 ', h('b', null, all.ratio.toFixed(1) + '배'), ' 걸렸어요',
+        all.hi > all.lo ? h('span', { class: 'sub' }, ' (대부분 ' + all.lo.toFixed(1) + '~' + all.hi.toFixed(1) + '배)') : null),
+      h('p', { class: 'sub' }, '점 하나가 기록 하나예요. 대각선보다 위에 있으면 예상보다 오래 걸린 거예요. 기록 ' + recs.length + '개 중 ' + above + '개.' +
+        (stopped ? ' 그만둔 일 ' + stopped + '개는 끝까지 하지 않아서 뺐어요.' : '')),
+      bt ? h('div', { class: 'bt' },
+        h('span', { class: 'label' }, '앱 보정이 도움이 됐나'),
+        h('p', null, '내 예상대로였다면 보통 ', h('b', null, Math.round(bt.mine * 100) + '%'), ' 빗나갔고, 앱 예상은 ', h('b', null, Math.round(bt.app * 100) + '%'), ' 빗나갔어요.'),
+        h('p', { class: 'sub' }, '기록마다 그 이전 기록만으로 앱 예상을 다시 계산해서 비교했어요 (보정이 있었던 기록 ' + bt.n + '개).'))
+        : h('p', { class: 'sub' }, '같은 루틴이나 카테고리 기록이 더 쌓이면 앱 보정이 얼마나 도움이 되는지도 보여 드려요.'));
+    return sec;
   }
 
   /* 그 주의 다른 활동 (루틴 기록은 루틴 상세에서 고친다) */
@@ -2346,7 +2411,7 @@
         h('span', { class: 'rec-name' }, r.name),
         h('span', { class: 'rec-times' }, r.estimateMin + '→' + r.actualMin + '분'),
         h('span', { class: 'rec-meta' }, r.category + ' · ' + dateText(r.startedAt) + ' ' + clockText(r.startedAt),
-          r.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null),
+          r.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null, !C.finished(r) ? h('span', { class: 'tag' }, '그만둠') : null),
         h('span', { class: 'rec-del' }, pencilBtn(q(r.name) + ' ' + dateText(r.startedAt) + ' 기록 고치기', () => (ui.editRecord === r.id ? closeRecordEdit(r.id) : openRecordEdit(r.id, 'review')), 'edit')));
       if (ui.editRecord === r.id && ui.editWhere === 'review') li.append(recordEditForm(r, null));
       return li;
@@ -2514,7 +2579,7 @@
     return h('section', { class: 'card', 'aria-labelledby': 'ratioH' },
       h('div', { class: 'section-head' }, h('h3', { id: 'ratioH' }, '카테고리별 배율'),
         h('div', { class: 'legend', 'aria-hidden': 'true' }, h('span', { class: 'lg-est' }, '평균 예상'), h('span', { class: 'lg-act' }, '평균 실제'))),
-      h('p', { class: 'sub' }, '배율 = 실제 시간 합 ÷ 예상 시간 합. 기록이 3개 이상인 카테고리만 계산해요.'),
+      h('p', { class: 'sub' }, '배율 = 실제 ÷ 예상의 가운데 값. 2배 늦은 것과 절반 만에 끝난 것을 같은 크기로 봐요. 기록이 3개 이상인 카테고리만 계산하고, 그만둔 일은 빼요.'),
       h('div', { class: 'ratios' }, stats.map((s) => {
         const enough = s.n >= C.CALIBRATE_FROM;
         const avgE = s.est / s.n, avgA = s.act / s.n;
@@ -2525,7 +2590,7 @@
             h('i', { class: 'a', style: 'width:' + (avgA / max * 100) + '%' })),
           h('span', { class: 'val' }, enough ? s.ratio.toFixed(1) + '×' : '–'),
           h('span', { class: 'note' }, enough
-            ? ratioText(s.ratio) + ' · 기록 ' + s.n + '개, 평균 예상 ' + Math.round(avgE) + '분 → 실제 ' + Math.round(avgA) + '분'
+            ? ratioText(s.ratio) + (s.hi > s.lo ? ' · 대부분 ' + s.lo.toFixed(1) + '~' + s.hi.toFixed(1) + '배' : '') + ' · 기록 ' + s.n + '개, 평균 예상 ' + Math.round(avgE) + '분 → 실제 ' + Math.round(avgA) + '분'
             : '기록 ' + s.n + '개 · 3개가 쌓이면 배율을 보여 드려요'));
       })));
   }

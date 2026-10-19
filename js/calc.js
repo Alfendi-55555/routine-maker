@@ -161,10 +161,25 @@
   }
 
   // ---------- 배율과 보정 ----------
+  /* 끝까지 한 기록인지 (그만둔 일은 끝까지 하지 않았으니 예상과 비교하지 않는다) */
+  function finished(r) { return r.outcome !== 'stopped'; }
+  function quantile(sorted, q) {
+    if (!sorted.length) return NaN;
+    var pos = (sorted.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+  }
+  /* 실제 ÷ 예상 배율. 2배 늦음과 0.5배 빠름이 같은 크기가 되도록 로그로 다룬다:
+   * ratio = 배율 로그의 중앙값, lo~hi = 가운데 절반(25~75%) 범위. est·act는 평균 막대용 합 */
   function ratioOf(records) {
     var est = 0, act = 0;
-    records.forEach(function (r) { est += r.estimateMin; act += r.actualMin; });
-    return { n: records.length, est: est, act: act, ratio: est > 0 ? round1(act / est) : NaN };
+    var logs = records.filter(function (r) { return r.estimateMin > 0 && r.actualMin > 0; })
+      .map(function (r) { est += r.estimateMin; act += r.actualMin; return Math.log(r.actualMin / r.estimateMin); })
+      .sort(function (a, b) { return a - b; });
+    if (!logs.length) return { n: records.length, est: est, act: act, ratio: NaN, lo: NaN, hi: NaN };
+    return {
+      n: records.length, est: est, act: act,
+      ratio: round1(Math.exp(median(logs))), lo: round1(Math.exp(quantile(logs, 0.25))), hi: round1(Math.exp(quantile(logs, 0.75)))
+    };
   }
 
   /* 루틴의 기본·최소 시간을 마지막으로 바꾼 시각 (없으면 null) */
@@ -178,12 +193,15 @@
    * (방금 기록을 보고 고친 시간이니 그대로 믿는다. 예전 배율을 새 시간에 또 곱하면 이중 보정이 된다) */
   function calibration(records, opts) {
     if (opts.routineId) {
-      var rs = records.filter(function (r) { return r.routineId === opts.routineId && (!opts.since || Date.parse(r.startedAt) >= Date.parse(opts.since)); });
+      var rs = records.filter(function (r) {
+        return finished(r) && r.routineId === opts.routineId && (!opts.since || Date.parse(r.startedAt) >= Date.parse(opts.since)) &&
+          (!opts.before || Date.parse(r.startedAt) < Date.parse(opts.before));
+      });
       if (rs.length >= CALIBRATE_FROM) return Object.assign({ source: 'routine' }, ratioOf(rs));
       if (opts.since) return null;
     }
     if (opts.category) {
-      var cs = records.filter(function (r) { return r.category === opts.category; });
+      var cs = records.filter(function (r) { return finished(r) && r.category === opts.category && (!opts.before || Date.parse(r.startedAt) < Date.parse(opts.before)); });
       if (cs.length >= CALIBRATE_FROM) return Object.assign({ source: 'category' }, ratioOf(cs));
     }
     return null;
@@ -199,9 +217,34 @@
 
   function categoryStats(records) {
     var map = {};
-    records.forEach(function (r) { (map[r.category] = map[r.category] || []).push(r); });
+    records.filter(finished).forEach(function (r) { (map[r.category] = map[r.category] || []).push(r); });
     return Object.keys(map).map(function (c) { return Object.assign({ category: c }, ratioOf(map[c])); })
       .sort(function (a, b) { return b.n - a.n; });
+  }
+
+  /* 보정 효과 확인(백테스트): 기록마다 그 이전 기록만으로 앱이 했을 예상을 다시 계산해서,
+   * 내 예상과 앱 예상 중 어느 쪽이 실제에 가까웠는지 본다. 빗나간 정도 = |실제 − 예상| ÷ 실제.
+   * 보정이 있었던(앱 예상이 내 예상과 달랐던) 기록만 센다. 반환: { n, mine, app } (중앙값, 0~1) 또는 null */
+  function backtest(records, routines) {
+    var byId = {};
+    (routines || []).forEach(function (r) { byId[r.id] = r; });
+    var mine = [], app = [];
+    records.filter(finished).slice().sort(byStart).forEach(function (rec) {
+      if (!(rec.estimateMin > 0) || !(rec.actualMin > 0)) return;
+      var r = rec.routineId ? byId[rec.routineId] : null;
+      var since = null;
+      if (r && Array.isArray(r.history)) {
+        r.history.forEach(function (c) { if (Date.parse(c.at) <= Date.parse(rec.startedAt)) since = c.at; });
+      }
+      var cal = calibration(records, { routineId: rec.routineId || null, category: rec.category, since: since, before: rec.startedAt });
+      if (!cal) return;
+      var pred = predict(rec.estimateMin, cal);
+      if (pred === rec.estimateMin) return;
+      mine.push(Math.abs(rec.actualMin - rec.estimateMin) / rec.actualMin);
+      app.push(Math.abs(rec.actualMin - pred) / rec.actualMin);
+    });
+    if (mine.length < CALIBRATE_FROM) return null;
+    return { n: mine.length, mine: median(mine), app: median(app) };
   }
 
   // ---------- 앵커 ----------
@@ -246,7 +289,7 @@
 
   /* 한 번으로 세는 기록인지: 기록할 때의 최소 시간(minMin)을 넘겼으면 센다.
    * minMin이 없는 기록(예전 기록, 늘 같은 분량을 끝낸 기록)은 센다 */
-  function countsAsDone(rec) { return rec.minMin == null || rec.actualMin >= rec.minMin; }
+  function countsAsDone(rec) { return finished(rec) && (rec.minMin == null || rec.actualMin >= rec.minMin); }
 
   function daysDone(records, routineId, from, to, shift) {
     var set = {};
@@ -573,7 +616,7 @@
   /* 루틴 수행 시간 관찰. 유형에 따라 비교 기준을 바꾼다.
    * fixed: 분 (예전 최소 버전 기록 제외) / count: 단위당 분 / none: 배율 */
   function observeDuration(records, routine) {
-    var rs = records.filter(function (r) { return r.routineId === routine.id; }).sort(byStart);
+    var rs = records.filter(function (r) { return r.routineId === routine.id && finished(r); }).sort(byStart);
     var type = routine.measure.type, values;
     if (type === 'fixed') values = rs.filter(function (r) { return r.version !== 'min'; }).map(function (r) { return r.actualMin; });
     else if (type === 'count') values = rs.filter(function (r) { return r.amount > 0; }).map(function (r) { return r.actualMin / r.amount; });
@@ -667,7 +710,7 @@
     DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,
     upcomingHolidays: upcomingHolidays, validHolidays: validHolidays,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,
-    ratioOf: ratioOf, calibration: calibration, lastChange: lastChange, predict: predict, fit: fit, categoryStats: categoryStats,
+    ratioOf: ratioOf, calibration: calibration, lastChange: lastChange, finished: finished, quantile: quantile, backtest: backtest, predict: predict, fit: fit, categoryStats: categoryStats,
     anchorToday: anchorToday, pickGap: pickGap,
     weekDone: weekDone, doneOn: doneOn, countsAsDone: countsAsDone, lastWeeks: lastWeeks, missedYesterday: missedYesterday, weekTight: weekTight,
     actualMinutes: actualMinutes, delayMinutes: delayMinutes, compareHalves: compareHalves,

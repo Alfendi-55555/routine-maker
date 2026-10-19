@@ -56,7 +56,7 @@
     <p class="meta" id="activeMeta"></p>
     <div class="row" id="activeButtons">
       <button type="button" class="btn primary" id="btnFinish">끝냈어요</button>
-      <button type="button" class="btn" id="btnAbandon">기록 없이 그만두기</button>
+      <button type="button" class="btn" id="btnAbandon">그만두기</button>
     </div>
     <div class="confirm" id="shortConfirm" hidden>
       <p id="shortText"></p>
@@ -84,10 +84,11 @@
       </div>
     </form>
     <div class="confirm" id="abandonConfirm" hidden>
-      <p>이번 일은 기록하지 않고 그만둘까요? 지금까지 잰 시간은 남지 않아요.</p>
+      <p id="abandonText">여기까지 한 시간을 ‘그만둔 일’로 남길까요? 그만둔 일은 횟수와 예상 비교에서 빠지고, 몇 번 그만뒀는지만 따로 세요. 잘못 시작했다면 기록 없이 지울 수 있어요.</p>
       <div class="row">
-        <button type="button" class="btn danger" id="btnAbandonYes">기록 없이 그만두기</button>
+        <button type="button" class="btn primary" id="btnAbandonYes">그만둔 일로 남기기</button>
         <button type="button" class="btn" id="btnAbandonNo">계속하기</button>
+        <button type="button" class="btn danger push-right" id="btnAbandonDiscard">기록 없이 지우기</button>
       </div>
     </div>
   </section>

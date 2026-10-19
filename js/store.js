@@ -90,6 +90,8 @@
     if (e.minMin != null && !isPos(e.minMin, 720)) return false;
     // 시작할 때 앱이 기록을 보고 예상한 시간 (없어도 됨)
     if (e.appMin != null && !isPos(e.appMin, 2000)) return false;
+    // 끝까지 하지 않고 그만둔 일 (없으면 끝낸 일)
+    if (e.outcome != null && e.outcome !== 'stopped') return false;
     if (!finished) return true;
     if (!isPos(e.actualMin) || !isDate(e.endedAt)) return false;
     if (e.amount != null && !isPos(e.amount)) return false;
