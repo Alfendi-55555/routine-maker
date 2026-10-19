@@ -194,7 +194,7 @@
   function calibration(records, opts) {
     if (opts.routineId) {
       var rs = records.filter(function (r) {
-        return finished(r) && r.routineId === opts.routineId && (!opts.since || Date.parse(r.startedAt) >= Date.parse(opts.since)) &&
+        return countsAsDone(r) && r.routineId === opts.routineId && (!opts.since || Date.parse(r.startedAt) >= Date.parse(opts.since)) &&
           (!opts.before || Date.parse(r.startedAt) < Date.parse(opts.before));
       });
       if (rs.length >= CALIBRATE_FROM) return Object.assign({ source: 'routine' }, ratioOf(rs));
@@ -225,12 +225,14 @@
   /* 보정 효과 확인(백테스트): 기록마다 그 이전 기록만으로 앱이 했을 예상을 다시 계산해서,
    * 내 예상과 앱 예상 중 어느 쪽이 실제에 가까웠는지 본다. 빗나간 정도 = |실제 − 예상| ÷ 실제.
    * 보정이 있었던(앱 예상이 내 예상과 달랐던) 기록만 센다. 반환: { n, mine, app } (중앙값, 0~1) 또는 null */
-  function backtest(records, routines) {
+  /* only(선택): 이 기록만 채점 (보정에는 이전 기록 전부를 쓴다) — 활동별 보정 효과 */
+  function backtest(records, routines, only) {
     var byId = {};
     (routines || []).forEach(function (r) { byId[r.id] = r; });
     var mine = [], app = [];
-    records.filter(finished).slice().sort(byStart).forEach(function (rec) {
+    records.filter(countsAsDone).slice().sort(byStart).forEach(function (rec) {
       if (!(rec.estimateMin > 0) || !(rec.actualMin > 0)) return;
+      if (only && !only(rec)) return;
       var r = rec.routineId ? byId[rec.routineId] : null;
       var since = null;
       if (r && Array.isArray(r.history)) {
@@ -245,6 +247,38 @@
     });
     if (mine.length < CALIBRATE_FROM) return null;
     return { n: mine.length, mine: median(mine), app: median(app) };
+  }
+
+  /* 박스플롯 값 (배율 로그 위에서): 가운데 절반 q1~q3, 중앙값, 수염(1.5×IQR 안의 가장 먼 값), 튀는 값.
+   * 돌려줄 때는 다시 배율로 바꾼다 */
+  function boxOf(ratios) {
+    var logs = ratios.filter(function (v) { return v > 0; }).map(Math.log).sort(function (a, b) { return a - b; });
+    if (!logs.length) return null;
+    var q1 = quantile(logs, 0.25), q3 = quantile(logs, 0.75), iqr = q3 - q1;
+    var inside = logs.filter(function (v) { return v >= q1 - 1.5 * iqr && v <= q3 + 1.5 * iqr; });
+    var e = Math.exp;
+    return {
+      n: logs.length, med: e(median(logs)), q1: e(q1), q3: e(q3), lo: e(inside[0]), hi: e(inside[inside.length - 1]),
+      out: logs.filter(function (v) { return v < q1 - 1.5 * iqr || v > q3 + 1.5 * iqr; }).map(e), all: logs.map(e)
+    };
+  }
+
+  /* 활동별 예상과 실제: 루틴 하나(마지막으로 시간을 바꾼 뒤 기록) / 다른 활동은 카테고리 하나.
+   * 반환: [{ kind: 'routine'|'category', id, name, recs, box }] */
+  function activityStats(records, routines) {
+    var ok = records.filter(function (r) { return countsAsDone(r) && r.estimateMin > 0 && r.actualMin > 0; });
+    var out = (routines || []).map(function (r) {
+      var since = lastChange(r);
+      var recs = ok.filter(function (x) { return x.routineId === r.id && (!since || Date.parse(x.startedAt) >= Date.parse(since)); });
+      return { kind: 'routine', id: r.id, name: r.name, recs: recs };
+    });
+    var cats = {};
+    ok.filter(function (x) { return !x.routineId; }).forEach(function (x) { (cats[x.category] = cats[x.category] || []).push(x); });
+    Object.keys(cats).sort(function (a, b) { return cats[b].length - cats[a].length; }).forEach(function (c) {
+      out.push({ kind: 'category', id: c, name: c, recs: cats[c] });
+    });
+    out.forEach(function (a) { a.box = boxOf(a.recs.map(function (x) { return x.actualMin / x.estimateMin; })); });
+    return out;
   }
 
   // ---------- 앵커 ----------
@@ -710,7 +744,7 @@
     DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,
     upcomingHolidays: upcomingHolidays, validHolidays: validHolidays,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,
-    ratioOf: ratioOf, calibration: calibration, lastChange: lastChange, finished: finished, quantile: quantile, backtest: backtest, predict: predict, fit: fit, categoryStats: categoryStats,
+    ratioOf: ratioOf, calibration: calibration, lastChange: lastChange, finished: finished, quantile: quantile, backtest: backtest, boxOf: boxOf, activityStats: activityStats, predict: predict, fit: fit, categoryStats: categoryStats,
     anchorToday: anchorToday, pickGap: pickGap,
     weekDone: weekDone, doneOn: doneOn, countsAsDone: countsAsDone, lastWeeks: lastWeeks, missedYesterday: missedYesterday, weekTight: weekTight,
     actualMinutes: actualMinutes, delayMinutes: delayMinutes, compareHalves: compareHalves,

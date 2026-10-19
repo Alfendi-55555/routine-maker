@@ -250,17 +250,6 @@ h4 { margin: 0; }
 .weeks { display: inline-flex; gap: 4px; align-items: center; }
 
 /* 돌아보기 */
-.ratios { display: grid; gap: 14px; }
-.ratio { display: grid; grid-template-columns: minmax(4.5em, 7em) 1fr auto; gap: 4px 12px; align-items: center; }
-.ratio .cat { font-weight: 600; min-width: 0; }
-.ratio .val { font-family: var(--mono); font-weight: 600; text-align: right; }
-.ratio .bars { display: grid; gap: 3px; min-width: 0; }
-.ratio .bars i { display: block; height: 7px; border-radius: 3px; }
-.ratio .bars i.e { background: var(--gap); }
-.ratio .bars i.a { background: var(--ink); }
-.ratio .note { grid-column: 2 / 4; font-size: 0.83rem; color: var(--muted); }
-.legend .lg-est::before { background: var(--gap); }
-.legend .lg-act::before { background: var(--ink); }
 .obs { display: grid; gap: 4px; font-size: 0.9rem; }
 .obs .label { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -840,3 +829,31 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .gap-big b { font-size: 1.35rem; }
 .bt { display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
 .bt .label { font-size: 0.78rem; font-weight: 700; color: var(--teal-ink); }
+
+/* 예상과 실제: 활동별 박스플롯 (실제 ÷ 예상, 로그 눈금) */
+.bx-list { display: grid; gap: 2px; }
+.bx-row, .bx-axis { display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) 64px; gap: 10px; align-items: center; }
+.bx-row { min-height: 40px; border-bottom: 1px solid var(--line); }
+.bx-row:last-child { border-bottom: 0; }
+.bx-row > .bx-detail { grid-column: 1 / -1; padding: 6px 0 12px; display: grid; gap: 8px; }
+.bx-name { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0; border: 0; background: none; font: inherit; font-size: 0.88rem; font-weight: 600; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.bx-name > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bx-name .sub { font-size: 0.72rem; font-weight: 400; white-space: nowrap; }
+.bx-name.task .rc-dot, .bx-box.task { --rc: var(--teal-mid); }
+.bx-name .rc-dot { width: 10px; height: 10px; }
+.bx-track { position: relative; height: 30px; }
+.bx-track > i { position: absolute; display: block; }
+.bx-one { top: 0; bottom: 0; width: 0; border-left: 1.5px dashed var(--muted); }
+.bx-whisker { top: 50%; height: 0; border-top: 1.5px solid var(--ink); }
+.bx-box { top: 22%; bottom: 22%; border: 1.5px solid var(--rc); background: color-mix(in srgb, var(--rc) 22%, transparent); border-radius: 3px; }
+.bx-med { top: 14%; bottom: 14%; width: 0; border-left: 3px solid var(--ink); margin-left: -1.5px; }
+.bx-pt { width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: var(--ink); opacity: 0.35; }
+.bx-pt.out { opacity: 0.9; background: var(--high); }
+.bx-val { text-align: right; font-size: 0.85rem; white-space: nowrap; }
+.bx-axis { min-height: 18px; }
+.bx-ticks { position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }
+.bx-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.bx-ticks span.one { font-weight: 700; color: var(--ink); }
+@media (max-width: 520px) { .bx-row, .bx-axis { grid-template-columns: 88px minmax(0, 1fr) 48px; gap: 6px; } .bx-name .sub { display: none; } }
+
+.bx-dir > div { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted); }

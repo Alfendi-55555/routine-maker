@@ -645,3 +645,26 @@ test('저장 검사: 그만둔 일', () => {
   d.records[0].outcome = 'paused';
   assert.equal(Store.validate(d), false);
 });
+
+// ---------- 활동별 박스플롯 ----------
+test('박스플롯: 가운데 절반, 중앙값, 튀는 값', () => {
+  const b = Calc.boxOf([1, 1.1, 1.2, 1.3, 1.4, 10]);
+  assert.ok(Math.abs(b.med - Math.sqrt(1.2 * 1.3)) < 1e-9);
+  assert.deepEqual(b.out.map((v) => Math.round(v)), [10]);
+  assert.ok(b.hi < 2);
+  assert.equal(Calc.boxOf([]), null);
+});
+
+test('활동별: 루틴은 바꾼 뒤 기록만, 다른 활동은 카테고리별', () => {
+  const r1 = { id: 'r1', name: '복습', history: [{ at: iso(2026, 10, 5, 0) }] };
+  const rs = [
+    rec({ startedAt: iso(2026, 10, 1) }), rec({ startedAt: iso(2026, 10, 6) }),
+    rec({ kind: 'task', routineId: null, category: '과제', estimateMin: 60, actualMin: 90 }),
+    rec({ kind: 'task', routineId: null, category: '과제', outcome: 'stopped' })
+  ];
+  const a = Calc.activityStats(rs, [r1]);
+  assert.equal(a[0].recs.length, 1);
+  assert.equal(a[1].kind, 'category');
+  assert.equal(a[1].recs.length, 1);
+  assert.equal(Math.round(a[1].box.med * 10) / 10, 1.5);
+});
