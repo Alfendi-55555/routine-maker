@@ -668,3 +668,11 @@ test('활동별: 루틴은 바꾼 뒤 기록만, 다른 활동은 카테고리�
   assert.equal(a[1].recs.length, 1);
   assert.equal(Math.round(a[1].box.med * 10) / 10, 1.5);
 });
+
+test('보정: 최근 10개 기록만 본다', () => {
+  // 처음 10번은 2배, 최근 10번은 예상대로 → 보정 배율 1배
+  const rs = [];
+  for (let i = 1; i <= 20; i++) rs.push(rec({ estimateMin: 30, actualMin: i <= 10 ? 60 : 30, startedAt: iso(2026, 9, i) }));
+  assert.equal(Calc.calibration(rs, { routineId: 'r1', category: '공부' }).ratio, 1);
+  assert.equal(Calc.RECENT, 10);
+});

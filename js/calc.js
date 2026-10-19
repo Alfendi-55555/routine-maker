@@ -191,18 +191,23 @@
   /* 보정에 쓸 배율: 그 루틴 기록 3개 이상 → 같은 카테고리 기록 3개 이상 → 없음(null)
    * opts.since: 루틴의 시간을 바꾼 시각. 그 뒤 기록만 보고, 3개가 안 되면 보정하지 않는다
    * (방금 기록을 보고 고친 시간이니 그대로 믿는다. 예전 배율을 새 시간에 또 곱하면 이중 보정이 된다) */
+  /* 보정은 최근 기록만 본다: 사람은 하면서 빨라지거나 느려지므로 오래된 기록까지 같은 무게로 보면 지금과 어긋난다.
+   * 예시 데이터 백테스트에서 전체(13%)·최근 5개(11%)·반감기 방식보다 최근 10개(11%, 빨라진 루틴 13%→6%)가 가장 나았다 */
+  var RECENT = 10;
+  function recent(list) { return list.slice().sort(byStart).slice(-RECENT); }
+
   function calibration(records, opts) {
     if (opts.routineId) {
       var rs = records.filter(function (r) {
         return countsAsDone(r) && r.routineId === opts.routineId && (!opts.since || Date.parse(r.startedAt) >= Date.parse(opts.since)) &&
           (!opts.before || Date.parse(r.startedAt) < Date.parse(opts.before));
       });
-      if (rs.length >= CALIBRATE_FROM) return Object.assign({ source: 'routine' }, ratioOf(rs));
+      if (rs.length >= CALIBRATE_FROM) return Object.assign({ source: 'routine' }, ratioOf(recent(rs)));
       if (opts.since) return null;
     }
     if (opts.category) {
       var cs = records.filter(function (r) { return finished(r) && r.category === opts.category && (!opts.before || Date.parse(r.startedAt) < Date.parse(opts.before)); });
-      if (cs.length >= CALIBRATE_FROM) return Object.assign({ source: 'category' }, ratioOf(cs));
+      if (cs.length >= CALIBRATE_FROM) return Object.assign({ source: 'category' }, ratioOf(recent(cs)));
     }
     return null;
   }
@@ -277,7 +282,8 @@
     Object.keys(cats).sort(function (a, b) { return cats[b].length - cats[a].length; }).forEach(function (c) {
       out.push({ kind: 'category', id: c, name: c, recs: cats[c] });
     });
-    out.forEach(function (a) { a.box = boxOf(a.recs.map(function (x) { return x.actualMin / x.estimateMin; })); });
+    // 보통 몇 배인지는 보정과 같은 최근 10개로 (기록 전체는 recs에 남겨 산점도에 쓴다)
+    out.forEach(function (a) { a.box = boxOf(recent(a.recs).map(function (x) { return x.actualMin / x.estimateMin; })); });
     return out;
   }
 
@@ -732,7 +738,7 @@
 
   var Calc = {
     MIN_GAP: MIN_GAP, CALIBRATE_FROM: CALIBRATE_FROM, OBSERVE_FROM: OBSERVE_FROM, MAX_DELAY: MAX_DELAY, DAY_NAMES: DAY_NAMES,
-    pad: pad, toMin: toMin, fmtHM: fmtHM, fmtDuration: fmtDuration, round1: round1, round5: round5, median: median,
+    RECENT: RECENT, pad: pad, toMin: toMin, fmtHM: fmtHM, fmtDuration: fmtDuration, round1: round1, round5: round5, median: median,
     startOfDay: startOfDay, addDays: addDays, mondayIndex: mondayIndex, startOfWeek: startOfWeek, dayKey: dayKey,
     minutesOfDay: minutesOfDay, atMinutes: atMinutes, diffMin: diffMin,
     MAX_ROLLOVER: MAX_ROLLOVER, dayEndMin: dayEndMin, rolloverMin: rolloverMin, logical: logical, logicalKey: logicalKey,

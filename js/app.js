@@ -1708,9 +1708,9 @@
     if (!recs.length) { sec.append(h('p', { class: 'sub' }, '아직 기록이 없어요. 한 번 해 보면 여기에 걸린 시간이 쌓여요.')); return sec; }
     const act = C.activityStats(state.records, [r])[0];
     if (act.box && act.box.n >= C.CALIBRATE_FROM) {
-      const b = act.box, f = (v) => (Math.round(v * 10) / 10).toFixed(1) + '배';
-      sec.append(h('p', { class: 'gap-big' }, '기본 ' + r.baseMin + '분 대비 보통 ', h('b', null, f(b.med)),
-        h('span', { class: 'sub' }, ' (가운데 절반 ' + f(b.q1) + '~' + f(b.q3) + ' · ' + (C.lastChange(r) ? '바꾼 뒤 ' : '') + '기록 ' + b.n + '개)')));
+      const b = act.box;
+      sec.append(h('p', { class: 'gap-big' }, '기본 ' + r.baseMin + '분 대비 보통 ', h('b', null, pctText(b.med)),
+        h('span', { class: 'sub' }, ' (최근 ' + b.n + '번' + (C.lastChange(r) ? ', 바꾼 뒤' : '') + (b.n >= 5 ? ' · ' + rangeText(b) : '') + ')')));
       const bt = C.backtest(state.records, state.routines, (x) => x.routineId === r.id);
       if (bt) sec.append(btLine(bt, ''));
     }
@@ -2363,66 +2363,68 @@
         h('aside', { class: 'col-side', 'aria-label': '루티의 제안' }, suggestionSection())));
   }
 
-  /* 예상과 실제: 활동마다 한 줄씩 같은 눈금(실제 ÷ 예상, 로그) 위의 박스플롯.
-   * 루틴은 루틴 하나(마지막으로 시간을 바꾼 뒤 기록), 다른 활동은 카테고리 하나 */
+  /* 배율 → "+20%" / "−10%" / "예상대로" */
+  function pctText(v) {
+    const p = Math.round((v - 1) * 100);
+    if (Math.abs(p) < 5) return '예상대로';
+    return (p > 0 ? '+' : '−') + Math.abs(p) + '%';
+  }
+
+  /* 가운데 절반 범위: "대부분 −8% ~ +20%" (둘 다 ±5% 안이면 "대부분 예상과 비슷") */
+  function rangeText(b) {
+    const a = pctText(b.q1), c = pctText(b.q3);
+    return a === '예상대로' && c === '예상대로' ? '대부분 예상과 비슷' : '대부분 ' + a + ' ~ ' + c;
+  }
+
+  /* 예상과 실제: 활동마다 한 줄, 가운데(예상대로)에서 좌우로 뻗는 막대. 오른쪽 = 예상보다 오래, 왼쪽 = 빨리.
+   * 루틴은 루틴 하나(마지막으로 시간을 바꾼 뒤), 다른 활동은 카테고리 하나. 값은 보정과 같은 최근 10번 기준 */
   function gapSection() {
     const acts = C.activityStats(state.records, state.routines).filter((a) => a.recs.length);
     const sec = h('section', { class: 'card gap-card', 'aria-labelledby': 'gapH' },
-      h('div', { class: 'section-head' }, h('h3', { id: 'gapH' }, '예상과 실제'), h('span', { class: 'sub' }, '활동마다 실제 ÷ 예상')));
+      h('div', { class: 'section-head' }, h('h3', { id: 'gapH' }, '예상과 실제'), h('span', { class: 'sub' }, '활동마다 최근 ' + C.RECENT + '번 기준')));
     const ready = acts.filter((a) => a.box && a.box.n >= C.CALIBRATE_FROM);
     if (!ready.length) { sec.append(h('p', { class: 'sub' }, '한 활동에 기록이 3개 이상 쌓이면 예상과 실제가 얼마나 다른지 보여 드려요.')); return sec; }
-    // 눈금: 0.5배~2배는 늘 보이게, 기록이 그 밖에 있으면 넓힌다 (0.25배~4배까지)
-    const vals = ready.flatMap((a) => a.box.all);
-    const lo = Math.max(0.25, Math.min(0.5, ...vals)), hi = Math.min(4, Math.max(2, ...vals));
-    const x = (v) => (Math.log(Math.min(hi, Math.max(lo, v))) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) * 100;
-    const fmt = (v) => v < 0.1 ? '0.1배 미만' : (Math.round(v * 10) / 10).toFixed(1) + '배';
-    const one = x(1);
-    const ticks = [0.25, 0.5, 1, 2, 3, 4].filter((t) => t >= lo && t <= hi);
+    // 막대 길이는 배율의 로그 (2배 늦음과 절반 만에 끝남이 같은 길이). 가장 긴 막대에 맞추되 최소 ±50%
+    const span = Math.max(Math.log(1.5), ...ready.map((a) => Math.abs(Math.log(a.box.med))));
+    const len = (v) => Math.min(50, Math.abs(Math.log(v)) / span * 50);
 
     const rows = acts.map((a) => {
       const r = a.kind === 'routine' ? findRoutine(a.id) : null;
       const b = a.box;
       const enough = b && b.n >= C.CALIBRATE_FROM;
       const open = a.kind === 'category' && ui.gapOpen === a.id;
+      const est = C.median(a.recs.slice(-C.RECENT).map((x) => x.estimateMin));
       const label = h('button', {
-        type: 'button', class: 'bx-name ' + (r ? rc(r) : 'task'), 'aria-expanded': a.kind === 'category' ? String(open) : null,
+        type: 'button', class: 'bx-name ' + (r ? rc(r) : 'task'), 'aria-expanded': a.kind === 'category' ? String(open) : null, 'data-id': a.id,
         onclick: () => {
           if (r) { openRoutine(r.id); return; }
           ui.gapOpen = open ? null : a.id;
           renderReview();
           const again = [...document.querySelectorAll('.bx-name')].find((el) => el.dataset.id === a.id);
           if (again) again.focus();
-        }, 'data-id': a.id
+        }
       }, h('span', { class: 'rc-dot', 'aria-hidden': 'true' }), h('span', null, a.name), a.kind === 'category' ? h('span', { class: 'sub' }, ' 다른 활동') : null);
-      const track = h('div', { class: 'bx-track', 'aria-hidden': 'true' },
-        h('i', { class: 'bx-one', style: 'left:' + one + '%' }));
+      const track = h('div', { class: 'bx-track', 'aria-hidden': 'true' }, h('i', { class: 'bx-one' }));
       if (enough) {
-        track.append(
-          h('i', { class: 'bx-whisker', style: 'left:' + x(b.lo) + '%;width:' + Math.max(0, x(b.hi) - x(b.lo)) + '%' }),
-          h('i', { class: 'bx-box ' + (r ? rc(r) : 'task'), style: 'left:' + x(b.q1) + '%;width:' + Math.max(0.6, x(b.q3) - x(b.q1)) + '%' }),
-          h('i', { class: 'bx-med', style: 'left:' + x(b.med) + '%' }));
+        const w = len(b.med), right = b.med >= 1;
+        track.append(h('i', { class: 'bx-bar ' + (r ? rc(r) : 'task') + (right ? '' : ' left'), style: (right ? 'left:50%' : 'right:50%') + ';width:' + w + '%' }));
       }
-      // 기록 하나하나를 점으로 (적은 기록으로 그린 상자를 과하게 믿지 않도록)
-      (b ? b.all : []).forEach((v, i) => track.append(h('i', {
-        class: 'bx-pt' + (enough && (v < b.lo || v > b.hi) ? ' out' : ''), style: 'left:' + x(v) + '%;top:' + (30 + ((i * 37) % 40)) + '%'
-      })));
-      const summary = enough
-        ? '보통 ' + fmt(b.med) + ' · 가운데 절반 ' + fmt(b.q1) + '~' + fmt(b.q3)
-        : '기록 ' + (b ? b.n : 0) + '개 · 3개부터 상자를 그려요';
+      const detail = enough
+        ? (r ? '기본 ' + r.baseMin + '분' : '예상 보통 ' + Math.round(est) + '분') + ' → 실제 보통 ' + Math.round(est * b.med) + '분' +
+          (b.n >= 5 ? ' · ' + rangeText(b) : '') + ' (기록 ' + a.recs.length + '개)'
+        : '기록 ' + b.n + '개 · 3개부터 보여 드려요';
       const row = h('li', { class: 'bx-row' },
         label, track,
-        h('span', { class: 'bx-val' }, enough ? h('b', null, fmt(b.med)) : '–', h('span', { class: 'sub' }, ' ' + (b ? b.n : 0) + '개')),
-        h('span', { class: 'sr-only' }, a.name + ': ' + summary));
+        h('span', { class: 'bx-val' }, enough ? h('b', null, pctText(b.med)) : '–'),
+        h('span', { class: 'bx-sub' }, detail));
       if (open) row.append(categoryDetail(a));
       return row;
     });
 
     sec.append(
+      h('div', { class: 'bx-axis bx-dir', 'aria-hidden': 'true' }, h('span'), h('div', null, h('span', null, '← 예상보다 빨리'), h('span', null, '예상대로'), h('span', null, '예상보다 오래 →')), h('span')),
       h('ul', { class: 'plain bx-list' }, rows),
-      h('div', { class: 'bx-axis', 'aria-hidden': 'true' }, h('span'),
-        h('div', { class: 'bx-ticks' }, ticks.map((t) => h('span', { style: 'left:' + x(t) + '%', class: t === 1 ? 'one' : null }, t + '배'))), h('span')),
-      h('div', { class: 'bx-axis bx-dir', 'aria-hidden': 'true' }, h('span'), h('div', null, h('span', null, '← 예상보다 빨리'), h('span', null, '예상보다 오래 →')), h('span')),
-      h('p', { class: 'sub' }, '상자 = 가운데 절반 · 굵은 선 = 보통 · 점 = 기록 하나 · 점선 = 예상대로(1배). 루틴은 기본 시간이 예상이고, 시간을 바꿨다면 바꾼 뒤 기록만 써요. 최소 시간 전에 끝낸 기록과 그만둔 일은 빼요.'));
+      h('p', { class: 'sub' }, '루틴은 기본 시간이 예상이고, 시간을 바꿨다면 바꾼 뒤 기록만 써요. 최소 시간 전에 끝낸 기록과 그만둔 일은 빼요. 앱은 이 숫자로 다음 예상을 보정해요.'));
     const stopped = state.records.filter((rec) => !C.finished(rec)).length;
     if (stopped) sec.append(h('p', { class: 'sub' }, '그만둔 일 ' + stopped + '개는 끝까지 하지 않아서 몇 번인지만 세요.'));
     const bt = C.backtest(state.records, state.routines);

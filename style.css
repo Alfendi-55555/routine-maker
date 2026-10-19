@@ -830,30 +830,24 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .bt { display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
 .bt .label { font-size: 0.78rem; font-weight: 700; color: var(--teal-ink); }
 
-/* 예상과 실제: 활동별 박스플롯 (실제 ÷ 예상, 로그 눈금) */
+/* 예상과 실제: 활동별 막대 (가운데 = 예상대로, 오른쪽 = 예상보다 오래) */
 .bx-list { display: grid; gap: 2px; }
-.bx-row, .bx-axis { display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) 64px; gap: 10px; align-items: center; }
-.bx-row { min-height: 40px; border-bottom: 1px solid var(--line); }
+.bx-row, .bx-axis { display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) 76px; column-gap: 10px; align-items: center; }
+.bx-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .bx-row:last-child { border-bottom: 0; }
+.bx-row > .bx-sub { grid-column: 2 / -1; font-size: 0.78rem; color: var(--muted); }
 .bx-row > .bx-detail { grid-column: 1 / -1; padding: 6px 0 12px; display: grid; gap: 8px; }
-.bx-name { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0; border: 0; background: none; font: inherit; font-size: 0.88rem; font-weight: 600; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.bx-name { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0; border: 0; background: none; font: inherit; font-size: 0.88rem; font-weight: 600; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .bx-name > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bx-name .sub { font-size: 0.72rem; font-weight: 400; white-space: nowrap; }
-.bx-name.task .rc-dot, .bx-box.task { --rc: var(--teal-mid); }
+.bx-name.task .rc-dot, .bx-bar.task { --rc: var(--teal-mid); }
 .bx-name .rc-dot { width: 10px; height: 10px; }
-.bx-track { position: relative; height: 30px; }
+.bx-track { position: relative; height: 22px; background: var(--bg); border-radius: 4px; }
 .bx-track > i { position: absolute; display: block; }
-.bx-one { top: 0; bottom: 0; width: 0; border-left: 1.5px dashed var(--muted); }
-.bx-whisker { top: 50%; height: 0; border-top: 1.5px solid var(--ink); }
-.bx-box { top: 22%; bottom: 22%; border: 1.5px solid var(--rc); background: color-mix(in srgb, var(--rc) 22%, transparent); border-radius: 3px; }
-.bx-med { top: 14%; bottom: 14%; width: 0; border-left: 3px solid var(--ink); margin-left: -1.5px; }
-.bx-pt { width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: var(--ink); opacity: 0.35; }
-.bx-pt.out { opacity: 0.9; background: var(--high); }
-.bx-val { text-align: right; font-size: 0.85rem; white-space: nowrap; }
+.bx-one { left: 50%; top: -3px; bottom: -3px; width: 0; border-left: 2px solid var(--ink); margin-left: -1px; z-index: 1; }
+.bx-bar { top: 3px; bottom: 3px; background: var(--rc); border-radius: 0 4px 4px 0; }
+.bx-bar.left { border-radius: 4px 0 0 4px; opacity: 0.75; }
+.bx-val { text-align: right; font-size: 0.9rem; white-space: nowrap; }
 .bx-axis { min-height: 18px; }
-.bx-ticks { position: relative; height: 16px; font-size: 0.7rem; color: var(--muted); }
-.bx-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-.bx-ticks span.one { font-weight: 700; color: var(--ink); }
-@media (max-width: 520px) { .bx-row, .bx-axis { grid-template-columns: 88px minmax(0, 1fr) 48px; gap: 6px; } .bx-name .sub { display: none; } }
-
+@media (max-width: 520px) { .bx-row, .bx-axis { grid-template-columns: 84px minmax(0, 1fr) 64px; column-gap: 6px; } .bx-name .sub { display: none; } }
 .bx-dir > div { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted); }
