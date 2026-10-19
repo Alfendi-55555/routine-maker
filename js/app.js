@@ -51,7 +51,7 @@
         else el.setAttribute(k, v);
       }
     }
-    for (const c of kids.flat()) {
+    for (const c of kids.flat(Infinity)) {
       if (c == null || c === false) continue;
       el.append(c.nodeType ? c : String(c));
     }
