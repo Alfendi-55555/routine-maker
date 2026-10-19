@@ -167,11 +167,20 @@
     return { n: records.length, est: est, act: act, ratio: est > 0 ? round1(act / est) : NaN };
   }
 
-  /* 보정에 쓸 배율: 그 루틴 기록 3개 이상 → 같은 카테고리 기록 3개 이상 → 없음(null) */
+  /* 루틴의 기본·최소 시간을 마지막으로 바꾼 시각 (없으면 null) */
+  function lastChange(routine) {
+    var hs = routine && Array.isArray(routine.history) ? routine.history : [];
+    return hs.length ? hs[hs.length - 1].at : null;
+  }
+
+  /* 보정에 쓸 배율: 그 루틴 기록 3개 이상 → 같은 카테고리 기록 3개 이상 → 없음(null)
+   * opts.since: 루틴의 시간을 바꾼 시각. 그 뒤 기록만 보고, 3개가 안 되면 보정하지 않는다
+   * (방금 기록을 보고 고친 시간이니 그대로 믿는다. 예전 배율을 새 시간에 또 곱하면 이중 보정이 된다) */
   function calibration(records, opts) {
     if (opts.routineId) {
-      var rs = records.filter(function (r) { return r.routineId === opts.routineId; });
+      var rs = records.filter(function (r) { return r.routineId === opts.routineId && (!opts.since || Date.parse(r.startedAt) >= Date.parse(opts.since)); });
       if (rs.length >= CALIBRATE_FROM) return Object.assign({ source: 'routine' }, ratioOf(rs));
+      if (opts.since) return null;
     }
     if (opts.category) {
       var cs = records.filter(function (r) { return r.category === opts.category; });
@@ -500,7 +509,10 @@
             from: r.minMin, to: smaller && smaller < r.minMin ? smaller : null });
         }
       }
-      var base = records.filter(function (x) { return x.routineId === r.id && x.version !== 'min' && countsAsDone(x); }).sort(byStart).slice(-5);
+      var changed = lastChange(r);
+      var base = records.filter(function (x) {
+        return x.routineId === r.id && x.version !== 'min' && countsAsDone(x) && (!changed || Date.parse(x.startedAt) >= Date.parse(changed));
+      }).sort(byStart).slice(-5);
       if (base.length >= 5) {
         var med = median(base.map(function (x) { return x.actualMin; }));
         var next = round5(med);
@@ -655,7 +667,7 @@
     DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,
     upcomingHolidays: upcomingHolidays, validHolidays: validHolidays,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,
-    ratioOf: ratioOf, calibration: calibration, predict: predict, fit: fit, categoryStats: categoryStats,
+    ratioOf: ratioOf, calibration: calibration, lastChange: lastChange, predict: predict, fit: fit, categoryStats: categoryStats,
     anchorToday: anchorToday, pickGap: pickGap,
     weekDone: weekDone, doneOn: doneOn, countsAsDone: countsAsDone, lastWeeks: lastWeeks, missedYesterday: missedYesterday, weekTight: weekTight,
     actualMinutes: actualMinutes, delayMinutes: delayMinutes, compareHalves: compareHalves,

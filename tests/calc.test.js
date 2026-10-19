@@ -575,3 +575,37 @@ test('저장 검사: 루틴 색과 기록의 최소 시간', () => {
   d.records[0].minMin = -1;
   assert.equal(Store.validate(d), false);
 });
+
+// ---------- 시간을 바꾼 뒤 다시 보정 ----------
+test('보정: 루틴 시간을 바꾸면 그 뒤 기록만 보고, 3개가 안 되면 보정하지 않는다', () => {
+  const old = [1, 2, 3, 4].map((d) => rec({ estimateMin: 30, actualMin: 45, startedAt: iso(2026, 10, d) }));
+  // 바꾸기 전: 배율 1.5
+  assert.equal(Calc.calibration(old, { routineId: 'r1', category: '공부' }).ratio, 1.5);
+  const since = iso(2026, 10, 5, 0);
+  // 바꾼 뒤 기록이 없으면 (카테고리 기록이 있어도) 보정 없음 → 새 기본 시간 그대로
+  assert.equal(Calc.calibration(old, { routineId: 'r1', category: '공부', since }), null);
+  const after = old.concat([6, 7, 8].map((d) => rec({ estimateMin: 45, actualMin: 45, startedAt: iso(2026, 10, d) })));
+  assert.equal(Calc.calibration(after, { routineId: 'r1', category: '공부', since }).ratio, 1);
+  assert.equal(Calc.lastChange({ history: [{ at: since }] }), since);
+  assert.equal(Calc.lastChange({}), null);
+});
+
+test('제안: 기본 시간을 바꾼 뒤에는 그 뒤 기록만 본다', () => {
+  const now = new Date(2026, 9, 26, 9);
+  const r = { id: 'r1', name: 'x', category: '공부', perWeek: 7, baseMin: 30, minMin: 10, anchor: null, measure: { type: 'fixed', amount: 1, unit: '개' }, createdAt: iso(2026, 9, 1) };
+  const records = [1, 2, 3, 4, 5, 6].map((d) => rec({ actualMin: 45, startedAt: iso(2026, 10, d) }));
+  assert.ok(Calc.suggestions(records, [r], now, 0).some((s) => s.kind === 'baseMin'));
+  r.baseMin = 45;
+  r.history = [{ at: iso(2026, 10, 7), baseMin: 45, minMin: 10, fromBase: 30, fromMin: 10, by: 'ruti' }];
+  assert.ok(!Calc.suggestions(records, [r], now, 0).some((s) => s.kind === 'baseMin'));
+});
+
+test('저장 검사: 시간 변경 이력과 앱 예상', () => {
+  const d = Store.empty();
+  d.routines.push({ id: 'r1', name: 'a', category: '공부', perWeek: 3, baseMin: 45, minMin: 10, anchor: null,
+    measure: { type: 'none' }, createdAt: iso(2026, 10, 1), history: [{ at: iso(2026, 10, 5), baseMin: 45, minMin: 10, fromBase: 30, fromMin: 10, by: 'edit' }] });
+  d.records.push(rec({ appMin: 40 }));
+  assert.equal(Store.validate(d), true);
+  d.routines[0].history[0].by = 'robot';
+  assert.equal(Store.validate(d), false);
+});

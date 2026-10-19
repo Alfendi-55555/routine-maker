@@ -66,6 +66,10 @@
     if (m.type === 'count') return isStr(m.unit, 10);
     return m.type === 'none';
   }
+  function validChange(c) {
+    return !!c && isDate(c.at) && isPos(c.baseMin, 720) && isPos(c.minMin, 720) &&
+      isPos(c.fromBase, 720) && isPos(c.fromMin, 720) && (c.by === 'edit' || c.by === 'ruti');
+  }
   function validRoutine(r) {
     return !!r && isStr(r.id) && isStr(r.name, 50) && isStr(r.category, 20) &&
       // 얼마나 자주: 상황 루틴은 "상황이 올 때마다"(perWeek 없음), 그 밖에는 요일(days) 또는 주 몇 번(perWeek)
@@ -73,7 +77,9 @@
       (r.days == null || validDays(r.days)) &&
       isPos(r.baseMin, 720) && isPos(r.minMin, 720) && r.minMin < r.baseMin &&
       validAnchor(r.anchor) && validMeasure(r.measure) && isDate(r.createdAt) &&
-      (r.color == null || COLORS.indexOf(r.color) !== -1);
+      (r.color == null || COLORS.indexOf(r.color) !== -1) &&
+      // 기본·최소 시간을 바꾼 이력 (없어도 됨)
+      (r.history == null || (Array.isArray(r.history) && r.history.every(validChange)));
   }
   function validEntry(e, finished) {
     if (!e || !isStr(e.id) || (e.kind !== 'routine' && e.kind !== 'task')) return false;
@@ -82,6 +88,8 @@
     if (e.plannedStartAt != null && !isDate(e.plannedStartAt)) return false;
     // 기록할 때의 최소 시간 (이보다 짧으면 한 번으로 세지 않음, 없어도 됨)
     if (e.minMin != null && !isPos(e.minMin, 720)) return false;
+    // 시작할 때 앱이 기록을 보고 예상한 시간 (없어도 됨)
+    if (e.appMin != null && !isPos(e.appMin, 2000)) return false;
     if (!finished) return true;
     if (!isPos(e.actualMin) || !isDate(e.endedAt)) return false;
     if (e.amount != null && !isPos(e.amount)) return false;

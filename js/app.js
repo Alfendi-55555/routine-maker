@@ -94,6 +94,8 @@
   }
   /* 이번 주에 해야 할 날 수: 요일 루틴은 이번 주의 그 요일 수, 주 N회 루틴은 N */
   function weekTarget(r) { return C.scheduleOf(r) === 'days' ? r.days.length : r.perWeek; }
+  /* 연속 N일이 / N번이 / N주가 */
+  function iga(unit) { return unit === '주' ? '가' : '이'; }
   function streakText(st) { return st.current > 0 ? '연속 ' + st.current + st.unit : ''; }
   function sitWeekText(occ, hit) { return occ ? '이번 주 상황 ' + occ + '번 중 ' + hit + '번' : '이번 주는 아직 상황이 없어요'; }
   function dateText(iso) {
@@ -780,6 +782,7 @@
       startedAt: a.startedAt, endedAt: endedAt.toISOString(), source: 'timer'
     };
     if (a.minMin) rec.minMin = a.minMin;
+    if (a.appMin) rec.appMin = a.appMin;
     state.records.push(rec);
     state.active = null;
     if (commit()) showStatus('info', q(rec.name) + ' 기록했어요. 실제 ' + actual + '분 걸렸어요.', recordSummary(rec, routine));
@@ -860,9 +863,9 @@
     const done = C.weekDone(state.records, r.id, now, L.shift);
     const doneToday = C.doneOn(state.records, r.id, L.day, L.shift);
     const anchor = anchorFor(r, L, ctx);
-    const cal = C.calibration(state.records, { routineId: r.id, category: r.category });
-    const predBase = C.predict(r.baseMin, cal);
-    const predMin = C.predict(r.minMin, cal);
+    const cal = routineCal(r);
+    const predBase = C.predict(r.baseMin, cal);   // 앱 예상: 기록으로 보정한 기본 시간
+    const predMin = r.minMin;                      // 최소 시간은 "이만큼은 하자"는 기준선이라 보정하지 않는다
     const pick = C.pickGap(gaps, anchor.today ? anchor.plannedMin : null, L.nowMin, state.settings.bufferMin);
     // 시작 신호가 이미 지났으면 몇 분 지났는지 (시작 지연이 지금 흐르는 중)
     const since = anchor.today && anchor.plannedMin != null && anchor.plannedMin <= L.nowMin && L.nowMin - anchor.plannedMin <= C.MAX_DELAY
@@ -890,6 +893,17 @@
       todo: !doneToday && (C.scheduleOf(r) === 'days' ? r.days.includes(L.weekday) : done < r.perWeek)
     });
   }
+  /* 루틴의 보정 배율: 기본·최소 시간을 바꿨다면 그 뒤 기록만 본다 */
+  function routineCal(r) {
+    return C.calibration(state.records, { routineId: r.id, category: r.category, since: C.lastChange(r) });
+  }
+  /* 판단이 내 기본 시간과 앱 예상에서 갈릴 때만 근거를 붙인다 (숫자는 판단의 이유로만) */
+  function fitReason(info, avail) {
+    if (!info.cal || info.predBase <= info.r.baseMin || avail == null) return '';
+    if (avail >= info.r.baseMin && avail < info.predBase) return '기록상 보통 ' + info.predBase + '분이라 빠듯해요';
+    return '';
+  }
+
   function weekText(info) {
     return info.situation ? sitWeekText(info.target, info.done) : '이번 주 ' + info.done + '/' + info.target;
   }
@@ -1072,11 +1086,12 @@
         h('span', { class: 'dot rc ' + rc(r), 'aria-hidden': 'true' }),
         h('div', { class: 'now-main' },
           h('button', { type: 'button', class: 'now-name name-link', onclick: () => openRoutine(r.id), 'aria-label': q(r.name) + ' 자세히 보기' }, r.name),
-          h('span', { class: 'now-meta' }, '약 ' + pick.predBase + '분 · 최소 ' + r.minMin + '분' +
-            (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.missed ? ' · 하면 ' + streakText(pick.streak) + '이 이어져요' : ''))),
+          h('span', { class: 'now-meta' }, '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분' +
+            (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.missed ? ' · 하면 ' + streakText(pick.streak) + iga(pick.streak.unit) + ' 이어져요' : ''))),
         h('button', { type: 'button', class: 'btn primary start-btn', onclick: () => onStartRoutine(r) }, '시작')),
       h('div', { class: 'now-foot' },
-        h('span', { class: 'fit-chip ' + pick.nowFit }, FIT_LONG[pick.nowFit])));
+        h('span', { class: 'fit-chip ' + pick.nowFit }, FIT_LONG[pick.nowFit]),
+        fitReason(pick, gap.remaining) ? h('span', { class: 'now-reason' }, fitReason(pick, gap.remaining)) : null));
     if (ui.panel && ui.panel.routineId === r.id && ui.panel.where === 'today') card.append(routinePanel(r));
     return { node: card, shownId: r.id };
   }
@@ -1204,15 +1219,17 @@
   function todayItem(info) {
     const r = info.r;
     const notes = [];
-    if (info.missed) notes.push((C.scheduleOf(r) === 'weekly' ? '이번 주에 채우면 ' : '오늘 하면 ') + streakText(info.streak) + '이 이어져요 · 최소 ' + r.minMin + '분만 해도 돼요');
+    if (info.missed) notes.push((C.scheduleOf(r) === 'weekly' ? '이번 주에 채우면 ' : '오늘 하면 ') + streakText(info.streak) + iga(info.streak.unit) + ' 이어져요 · 최소 ' + r.minMin + '분만 해도 돼요');
     if (info.tight) notes.push('이번 주 ' + info.tight.left + '번 남았는데 ' + info.tight.daysLeft + '일 남았어요');
     if (info.since != null) notes.push(sinceText(info));
+    const reason = info.pick ? fitReason(info, info.pick.avail) : '';
+    if (reason) notes.push(reason);
     const li = h('li', { class: 'rrow' + (info.missed || info.tight ? ' flagged' : ''), id: 'ti-' + r.id },
       h('div', { class: 'rrow-line' },
         h('span', { class: 'dot rc ' + rc(r), 'aria-hidden': 'true' }),
         h('div', { class: 'rrow-main' },
           h('h4', { class: 'rrow-name' }, h('button', { type: 'button', class: 'name-link', onclick: () => openRoutine(r.id), 'aria-label': q(r.name) + ' 자세히 보기' }, r.name)),
-          h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 약 ' + info.predBase + '분 · ' + weekText(info) + (info.streak.current ? ' · ' + streakText(info.streak) : '')),
+          h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 기본 ' + r.baseMin + '분 · ' + weekText(info) + (info.streak.current ? ' · ' + streakText(info.streak) : '')),
           notes.length ? h('span', { class: 'rrow-note' }, notes.join(' · ')) : null),
         h('span', { class: 'fit-word ' + info.fit }, FIT_SHORT[info.fit]),
         h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r), 'aria-label': q(r.name) + ' 시작' }, '시작')));
@@ -1305,6 +1322,7 @@
       estimateMin, plannedStartAt: planned, startedAt: now.toISOString()
     };
     if (minFor(r)) state.active.minMin = minFor(r);
+    state.active.appMin = C.predict(estimateMin, routineCal(r));
     ui.panel = null;
     if (commit()) showStatus('info', q(r.name) + ' 시작했어요.', (minFor(r) ? '최소 ' + minFor(r) + '분을 넘기면 한 번으로 세요. ' : '') + '새로고침하거나 탭을 닫아도 시작 시각부터 이어서 계산해요.');
     renderAll();
@@ -1387,6 +1405,7 @@
       } else {
         state.active = {
           id: uid('t'), kind: 'task', routineId: null, name, category, version: null, estimateMin: est,
+          appMin: C.predict(est, C.calibration(state.records, { category })),
           plannedStartAt: null, startedAt: now.toISOString()
         };
         if (commit()) showStatus('info', q(name) + ' 시작했어요.', '새로고침하거나 탭을 닫아도 시작 시각부터 이어서 계산해요.');
@@ -1429,6 +1448,13 @@
 
   // ========== 루틴 ==========
   /* 이번 주 작은 막대: 요일 루틴은 월~일 칸, 주 N회는 N칸, 상황 루틴은 이번 주 상황 수만큼 */
+  /* 기본·최소 시간 변경 이력: 기록 사이 구분선과 다시 보정하는 기준점 */
+  function noteChange(r, baseMin, minMin, by) {
+    if (r.baseMin === baseMin && r.minMin === minMin) return false;
+    r.history = (r.history || []).concat({ at: new Date().toISOString(), baseMin, minMin, fromBase: r.baseMin, fromMin: r.minMin, by });
+    return true;
+  }
+
   function weekStrip(r, week) {
     const L = nowL();
     const ws = week || C.startOfWeek(L.day);
@@ -1577,7 +1603,8 @@
       h('dl', { class: 'facts-dl' },
         h('dt', null, '얼마나 자주'), h('dd', null, goalText(r)),
         h('dt', null, '시간'), h('dd', null, '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분',
-          info.cal ? h('span', { class: 'sub' }, ' (기록 기준 약 ' + info.predBase + '분)') : null),
+          info.cal ? h('span', { class: 'sub' }, ' (기록 기준 보통 ' + info.predBase + '분' + (C.lastChange(r) ? ', 바꾼 뒤 기록으로' : '') + ')')
+            : C.lastChange(r) ? h('span', { class: 'sub' }, ' (바꾼 뒤 기록이 3개 쌓이면 다시 보정해요)') : null),
         h('dt', null, '분량'), h('dd', null, measureText(r.measure)),
         h('dt', null, '한 번으로 셈'), h('dd', null, r.measure.type === 'fixed' ? '정한 분량을 끝내면' : '최소 ' + r.minMin + '분을 넘기면'),
         r.anchor && r.anchor.type === 'block' && findBlock(r.anchor.blockId) ? [h('dt', null, '신호 요일'), h('dd', null, daysText(findBlock(r.anchor.blockId).days))] : null)));
@@ -1667,7 +1694,12 @@
     sec.append(
       h('div', { class: 'section-head' }, h('span', null, '걸린 시간 ', h('span', { class: 'sub' }, '최근 ' + last.length + '번')), h('b', null, '보통 ' + Math.round(med) + '분')),
       h('div', { class: 'tbars ' + rc(r), role: 'img', 'aria-label': '최근 ' + last.length + '번 걸린 시간: ' + last.map((x) => x.actualMin).join(', ') + '분' },
-        last.map((x) => h('span', { class: 'tb' + (C.countsAsDone(x) ? '' : ' short'), style: 'height:' + pct(x.actualMin) + '%', title: dateText(x.startedAt) + ' ' + x.actualMin + '분' })),
+        last.map((x, i) => {
+          const changed = C.lastChange(r);
+          const mark = changed && i > 0 && Date.parse(last[i - 1].startedAt) < Date.parse(changed) && Date.parse(x.startedAt) >= Date.parse(changed);
+          return [mark ? h('i', { class: 'tchange', title: '여기서 시간을 바꿨어요' }) : null,
+            h('span', { class: 'tb' + (C.countsAsDone(x) ? '' : ' short'), style: 'height:' + pct(x.actualMin) + '%', title: dateText(x.startedAt) + ' ' + x.actualMin + '분' })];
+        }),
         h('i', { class: 'tline base', style: 'bottom:' + pct(r.baseMin) + '%' }, h('em', null, '기본 ' + r.baseMin + '분')),
         h('i', { class: 'tline min', style: 'bottom:' + pct(r.minMin) + '%' }, h('em', null, '최소 ' + r.minMin + '분'))),
       h('p', { class: 'sub' }, C.durationSentence(C.observeDuration(state.records, r), r)));
@@ -1679,6 +1711,14 @@
     return sec;
   }
 
+  function changeRow(c) {
+    const bits = [];
+    if (c.baseMin !== c.fromBase) bits.push('기본 ' + c.fromBase + '분 → ' + c.baseMin + '분');
+    if (c.minMin !== c.fromMin) bits.push('최소 ' + c.fromMin + '분 → ' + c.minMin + '분');
+    return h('li', { class: 'rd-change' }, h('span', null, dateText(c.at) + ' ' + bits.join(', ') + (c.by === 'ruti' ? ' (루티 제안)' : ' (직접 고침)')),
+      h('span', { class: 'sub' }, '여기서부터 다시 예상'));
+  }
+
   function recentRecords(r) {
     const all = state.records.filter((x) => x.routineId === r.id).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
     if (ui.recLimit.id !== r.id) ui.recLimit = { id: r.id, n: 10 };
@@ -1686,7 +1726,17 @@
     const sec = h('section', { class: 'card', 'aria-labelledby': 'rdRecH' },
       h('div', { class: 'section-head' }, h('h3', { id: 'rdRecH' }, '기록'), h('span', { class: 'sub num' }, all.length + '개')));
     if (!all.length) { sec.append(h('p', { class: 'sub' }, '아직 기록이 없어요.')); return sec; }
-    sec.append(h('ul', { class: 'plain rd-recs' }, list.map((x) => {
+    // 기록 사이에 시간을 바꾼 시점 (최신 기록부터 내려가며, 그 기록보다 뒤에 바꾼 것을 위에 끼운다)
+    const changes = (r.history || []).slice().sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    let ci = 0;
+    const rows = [];
+    list.forEach((x) => {
+      while (ci < changes.length && Date.parse(changes[ci].at) > Date.parse(x.startedAt)) rows.push(changeRow(changes[ci++]));
+      rows.push(x);
+    });
+    if (list.length === all.length) while (ci < changes.length) rows.push(changeRow(changes[ci++]));
+    sec.append(h('ul', { class: 'plain rd-recs' }, rows.map((x) => {
+      if (x.nodeType) return x;
       const li = h('li', { id: 'rrec-' + x.id },
         h('div', { class: 'rd-rec' },
           h('span', null, dateText(x.startedAt) + ' ', h('span', { class: 'num' }, clockText(x.startedAt))),
@@ -2053,6 +2103,7 @@
       const editing = ui.editRoutine && findRoutine(ui.editRoutine);
       let saved;
       if (editing) {
+        noteChange(editing, data.baseMin, data.minMin, 'edit');
         saved = Object.assign(editing, data);
       } else {
         saved = Object.assign({ id: uid('r') }, data, { createdAt: new Date().toISOString() });
@@ -2438,9 +2489,9 @@
     if (!r) return;
     let done = '';
     if (s.kind === 'perWeek') { r.perWeek = s.to; done = perWeekText(s.to) + '로'; }
-    if (s.kind === 'baseMin') { r.baseMin = s.to; done = '기본 ' + s.to + '분으로'; }
+    if (s.kind === 'baseMin') { noteChange(r, s.to, r.minMin, 'ruti'); r.baseMin = s.to; done = '기본 ' + s.to + '분으로'; }
     if (s.kind === 'dropDay') { r.days = s.to; done = daysGoal(s.to) + '로'; }
-    if (s.kind === 'situationLow' && s.to) { r.minMin = s.to; done = '최소 ' + s.to + '분으로'; }
+    if (s.kind === 'situationLow' && s.to) { noteChange(r, r.baseMin, s.to, 'ruti'); r.minMin = s.to; done = '최소 ' + s.to + '분으로'; }
     dismissSuggestion(s.key);
     if (commit()) showStatus('info', q(r.name) + ' 루틴을 ' + done + ' 바꿨어요.', '되돌리려면 루틴 탭에서 연필을 눌러 고치면 돼요.');
     afterSuggestion();
@@ -2516,9 +2567,8 @@
           h('p', { class: 'err', id: 'eActErr' }))),
       h('div', { class: 'grid2' },
         h('div', { class: 'field' },
-          h('label', { for: 'eEst' }, '예상 시간 (분)'),
-          h('input', { id: 'eEst', inputmode: 'numeric', autocomplete: 'off', value: String(r.estimateMin), 'aria-describedby': 'eEstErr' }),
-          h('p', { class: 'err', id: 'eEstErr' }))),
+          h('span', { class: 'field-label' }, '예상 시간'),
+          h('p', { class: 'locked' }, r.estimateMin + '분', h('span', { class: 'sub' }, ' · 시작할 때 정한 값이라 고치지 않아요')))),
       counts ? h('div', { class: 'field' },
         h('label', { for: 'eAmt' }, '분량 (' + routine.measure.unit + ', 모르면 비워 두세요)'),
         h('input', { id: 'eAmt', inputmode: 'numeric', autocomplete: 'off', value: r.amount ? String(r.amount) : '', 'aria-describedby': 'eAmtErr' }),
@@ -2531,11 +2581,10 @@
       ev.preventDefault();
       clearErrs(form);
       const errs = [setErr('eStart', isNaN(C.toMin($('eStart').value)) ? '시작 시각을 골라 주세요' : ''),
-        setErr('eAct', C.checkMinutes($('eAct').value)), setErr('eEst', C.checkMinutes($('eEst').value))];
+        setErr('eAct', C.checkMinutes($('eAct').value))];
       if (counts && $('eAmt').value.trim() !== '') errs.push(setErr('eAmt', C.checkAmount($('eAmt').value)));
       if (focusFirst(errs)) return;
       r.actualMin = Number($('eAct').value);
-      r.estimateMin = Number($('eEst').value);
       if (counts) r.amount = $('eAmt').value.trim() ? Number($('eAmt').value) : null;
       // 시작 시각: 앱 안의 같은 날에서 시각만 바꾼다 (하루 끝이 자정을 넘으면 그 전 시각은 다음 날 새벽)
       const sh = shift();
