@@ -856,3 +856,29 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .with-help { display: flex; align-items: center; gap: 2px; }
 .help-box { padding: 10px 14px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 0.86rem; }
 .help-box ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; }
+
+/* 고정 일정 편집 창 */
+.dialog.wide { width: min(860px, calc(100vw - 32px)); }
+.blocks-body { display: grid; gap: 16px; padding: 16px; }
+.blk-list { display: grid; gap: 8px; margin-bottom: 8px; }
+.blk-item {
+  width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 10px; align-items: center; text-align: left;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font: inherit; color: inherit; cursor: pointer;
+}
+.blk-item:hover { border-color: var(--muted); }
+.blk-item.on { border: 1.5px solid var(--accent); background: var(--accent-soft); }
+.blk-text { display: grid; min-width: 0; }
+.blk-text .sub { font-size: 0.8rem; }
+.blocks-edit { display: grid; gap: 12px; }
+.blk-list .blocks-edit { padding: 12px; margin-top: 6px; border-radius: 10px; background: var(--bg); }
+.blocks-form-head { display: grid; gap: 2px; }
+.blocks-form-head h3 { font-size: 1.02rem; }
+.new-btn.on { border-style: solid; background: var(--accent-soft); }
+.cal-head .edit-blocks { display: inline-flex; align-items: center; gap: 6px; }
+@media (min-width: 1024px) {
+  .blocks-body { grid-template-columns: 280px minmax(0, 1fr); padding: 0; gap: 0; min-height: 460px; }
+  .blocks-list { padding: 16px; border-right: 1px solid var(--line); background: var(--bg); display: flex; flex-direction: column; }
+  .blocks-list .new-btn { margin-top: auto; }
+  .blocks-form { padding: 20px 24px; }
+  .cal-head .edit-blocks { margin-left: auto; }
+}

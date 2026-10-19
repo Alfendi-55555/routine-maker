@@ -503,6 +503,17 @@
 </dialog>
 
 <!-- 고치기 대화상자: 루틴·고정 일정 폼을 잠시 이 안으로 옮겨 와서 화면 위에 띄운다 -->
+<!-- 고정 일정 편집: 캘린더의 '고정 일정 편집'을 누르면 열린다. 왼쪽 목록, 오른쪽(휴대폰은 고른 줄 아래) 고치기·넣기 -->
+<dialog id="blocksDialog" class="dialog wide" aria-labelledby="blocksTitle">
+  <div class="dialog-head">
+    <h2 id="blocksTitle">고정 일정 편집</h2>
+    <div class="row"><span class="sub" id="blocksCount"></span><button type="button" class="btn ghost small" id="blocksClose">닫기</button></div>
+  </div>
+  <div class="blocks-body">
+    <div class="blocks-list" id="blocksList"></div>
+    <div class="blocks-form" id="blocksFormHost"></div>
+  </div>
+</dialog>
 <dialog id="editDialog" class="dialog" aria-labelledby="editDialogTitle">
   <div class="dialog-head">
     <h2 id="editDialogTitle"></h2>

@@ -245,7 +245,7 @@
     const view = nodes.pop();
     nodes.push(h('div', { class: 'cols cal-cols' },
       h('div', { class: 'col-main' }, view),
-      h('aside', { class: 'col-side', 'aria-label': '고른 날과 고정 일정' }, calendarDay(ui.calSel, hmap, byDay), blockList())));
+      h('aside', { class: 'col-side', 'aria-label': '고른 날' }, calendarDay(ui.calSel, hmap, byDay))));
     box.replaceChildren(...nodes);
   }
 
@@ -261,7 +261,8 @@
         h('button', { type: 'button', class: 'icon-btn', onclick: () => move(-1), 'aria-label': '이전 달' }, svgIcon(ICON_BACK)),
         h('h3', { id: 'calTitle', 'aria-live': 'polite' }, y + '년 ' + (mo + 1) + '월'),
         h('button', { type: 'button', class: 'icon-btn', onclick: () => move(1), 'aria-label': '다음 달' }, svgIcon(ICON_NEXT))),
-      h('button', { type: 'button', class: 'btn small', onclick: () => { ui.calMonth = null; ui.calSel = null; renderCalendar(); } }, '오늘'));
+      h('button', { type: 'button', class: 'btn small', onclick: () => { ui.calMonth = null; ui.calSel = null; renderCalendar(); } }, '오늘'),
+      h('button', { type: 'button', class: 'btn small edit-blocks', onclick: () => openBlocks(), 'aria-haspopup': 'dialog' }, svgIcon('M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z', 15), '고정 일정 편집'));
 
     const rows = [];
     for (let w = 0; w < weeks; w++) {
@@ -356,7 +357,8 @@
         h('button', { type: 'button', class: 'icon-btn', onclick: () => move(-1), 'aria-label': '이전 주' }, svgIcon(ICON_BACK)),
         h('h3', { id: 'calTitle', 'aria-live': 'polite' }, title),
         h('button', { type: 'button', class: 'icon-btn', onclick: () => move(1), 'aria-label': '다음 주' }, svgIcon(ICON_NEXT))),
-      h('button', { type: 'button', class: 'btn small', onclick: () => { ui.calWeek = null; ui.calSel = null; renderCalendar(); } }, '오늘'));
+      h('button', { type: 'button', class: 'btn small', onclick: () => { ui.calWeek = null; ui.calSel = null; renderCalendar(); } }, '오늘'),
+      h('button', { type: 'button', class: 'btn small edit-blocks', onclick: () => openBlocks(), 'aria-haspopup': 'dialog' }, svgIcon('M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z', 15), '고정 일정 편집'));
 
     const heads = [], lanes = [], cols = [];
     let anyAllDay = false;
@@ -435,35 +437,90 @@
     return [grid];
   }
 
-  /* 매주 반복되는 고정 일정 목록 (예전 주간 틀). 이걸 빼고 남는 시간이 빈 시간 */
-  function blockList() {
-    const sec = h('section', { class: 'card', 'aria-labelledby': 'blocksH' },
-      h('div', { class: 'section-head' }, h('h3', { id: 'blocksH' }, '고정 일정' + (state.blocks.length ? ' ' + state.blocks.length + '개' : ''))));
-    if (!state.blocks.length) {
-      sec.append(h('p', { class: 'sub' }, '수업, 통학, 알바처럼 내가 옮길 수 없는 일정을 넣어 보세요.'));
-    } else {
-      const sorted = state.blocks.slice().sort((a, b) =>
-        (KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)) || C.toMin(a.start) - C.toMin(b.start));
-      sec.append(h('ul', { class: 'plain blist' }, sorted.map((b) => {
-        const anchored = state.routines.filter((r) => r.anchor && r.anchor.type === 'block' && r.anchor.blockId === b.id);
-        return h('li', { id: 'bc-' + b.id, class: 'brow' },
-          h('span', { class: 'bsq ' + kindClass(b.kind), 'aria-hidden': 'true' }),
-          h('span', { class: 'bmain' }, h('b', null, b.name), ' ', h('span', { class: 'sub' }, b.kind + ' · ' + daysText(b.days) + ' ', h('span', { class: 'num' }, b.start + '–' + b.end)),
-            anchored.length ? h('span', { class: 'sub bsig' }, '끝나면 → ' + anchored.map((r) => r.name).join(', ')) : null),
-          pencilBtn(q(b.name) + ' 고치기', () => editBlock(b.id)));
-      })));
-    }
-    sec.append(h('button', { type: 'button', class: 'new-btn', id: 'btnNewBlock', onclick: openNewBlock }, '+ 고정 일정 넣기'));
-    return sec;
-  }
+  function openNewBlock() { openBlocks('new'); }
 
-  /* 고정 일정 넣기: 빈 폼을 화면 위 창으로 */
-  function openNewBlock() {
+  // ---------- 고정 일정 편집 창: 목록에서 골라 확인·수정, 새로 넣기 ----------
+  let blocksHome = null;
+  const blocksOpen = () => $('blocksDialog').open;
+  function openBlocks(sel) {
     if (ui.tab !== 'calendar') switchTab('calendar');
+    ui.blocksReturn = document.activeElement;
+    if (!blocksHome) { blocksHome = document.createComment('block-form-home'); $('blockForm').before(blocksHome); }
+    const dlg = $('blocksDialog');
+    if (!dlg.open) { if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', ''); }
+    selectBlock(sel || (state.blocks[0] ? sortedBlocks()[0].id : 'new'));
+    const first = sel === 'new' || !state.blocks.length ? $('bName') : document.querySelector('#blocksList [aria-current="true"]');
+    if (first) first.focus();
+  }
+  function closeBlocks() {
+    const dlg = $('blocksDialog');
+    if (dlg.open) { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
+    afterBlocksClosed();
+  }
+  /* 닫은 뒤 정리: 폼을 제자리로, 초점은 연 곳으로. Esc로 닫을 때도 불리니 한 번만 */
+  function afterBlocksClosed() {
+    if (ui.blockSel == null) return;
+    if (blocksHome) blocksHome.after($('blockForm'));
     resetBlockForm();
-    openEditDialog('blockForm', '고정 일정 넣기', () => $('btnNewBlock') || $('tab-calendar'), resetBlockForm);
-    $('bCancel').hidden = false;
-    $('bCancel').textContent = '취소';
+    ui.blockSel = null;
+    renderCalendar();
+    const t = ui.blocksReturn;
+    if (t && document.contains(t)) t.focus(); else { const b = document.querySelector('.edit-blocks'); if (b) b.focus(); }
+  }
+  function sortedBlocks() {
+    return state.blocks.slice().sort((a, b) => (KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)) || C.toMin(a.start) - C.toMin(b.start));
+  }
+  /* 고른 일정을 폼에 채운다 ('new'면 빈 폼) */
+  function selectBlock(id) {
+    resetBlockForm();
+    ui.blockSel = id;
+    const b = id !== 'new' && findBlock(id);
+    if (b) {
+      ui.editBlock = b.id;
+      $('bName').value = b.name;
+      $('bKind').value = b.kind;
+      document.querySelectorAll('input[name="bDay"]').forEach((el) => { el.checked = b.days.includes(Number(el.value)); });
+      $('bStart').value = b.start;
+      $('bEnd').value = b.end;
+      $('bSubmit').textContent = '저장';
+      $('bCancel').hidden = false;
+      $('bCancel').textContent = '되돌리기';
+      $('bDelete').hidden = false;
+    } else {
+      ui.blockSel = 'new';
+      $('bSubmit').textContent = '넣기';
+    }
+    renderBlocksDialog();
+  }
+  function renderBlocksDialog() {
+    if (!blocksOpen()) return;
+    $('blocksCount').textContent = '매주 반복되는 일정 ' + state.blocks.length + '개';
+    const sel = ui.blockSel;
+    const b = sel !== 'new' && findBlock(sel);
+    const anchored = b ? state.routines.filter((r) => r.anchor && r.anchor.type === 'block' && r.anchor.blockId === b.id) : [];
+    const head = h('div', { class: 'blocks-form-head' },
+      h('h3', { id: 'blockFormH', tabindex: '-1' }, b ? q(b.name) + ' 고치기' : '새 고정 일정'),
+      anchored.length ? h('span', { class: 'sub' }, '시작 신호로 쓰는 루틴: ' + anchored.map((r) => r.name).join(', ')) : null);
+    const items = sortedBlocks().map((x) => h('li', null, h('button', {
+      type: 'button', class: 'blk-item' + (x.id === sel ? ' on' : ''), 'aria-current': x.id === sel ? 'true' : null,
+      onclick: () => { selectBlock(x.id); if (!isWide()) { const f = $('bName'); if (f) f.focus(); } else { const again = document.querySelector('#blocksList [aria-current="true"]'); if (again) again.focus(); } }
+    }, h('span', { class: 'bsq ' + kindClass(x.kind), 'aria-hidden': 'true' }),
+      h('span', { class: 'blk-text' }, h('b', null, x.name), h('span', { class: 'sub' }, x.kind + ' · ' + daysText(x.days) + ' ' + x.start + '–' + x.end)))));
+    const form = $('blockForm');
+    const formBox = h('div', { class: 'blocks-edit' }, head);
+    formBox.append(form);
+    const addBtn = h('button', { type: 'button', class: 'new-btn' + (sel === 'new' ? ' on' : ''), id: 'btnNewBlock', onclick: () => { selectBlock('new'); $('bName').focus(); } }, '+ 새 고정 일정');
+    const list = h('ul', { class: 'plain blk-list' }, items);
+    if (isWide()) {
+      $('blocksList').replaceChildren(list, addBtn);
+      $('blocksFormHost').replaceChildren(formBox);
+    } else {
+      // 휴대폰: 고른 줄 바로 아래에 고치기 칸, 새로 넣기는 맨 아래
+      const li = sel === 'new' ? null : [...list.children].find((n) => n.querySelector('[aria-current="true"]'));
+      if (li) li.append(formBox);
+      $('blocksList').replaceChildren(list, addBtn, sel === 'new' ? formBox : '');
+      $('blocksFormHost').replaceChildren();
+    }
   }
 
   /* 고른 날: 공휴일, 그날 고정 일정(공휴일에 쉬는 것 표시), 그날 기록 */
@@ -2158,6 +2215,12 @@
     if (commit()) showStatus('info', q(b.name) + ' 고정 일정을 지웠어요.',
       anchored.length ? anchored.map((r) => q(r.name)).join(', ') + '은(는) 이제 아무 때나 루틴이에요. 루틴 탭에서 얼마나 자주 할지 확인해 주세요.' : '');
     renderAll();
+    if (blocksOpen()) {
+      selectBlock(state.blocks.length ? sortedBlocks()[0].id : 'new');
+      const t = document.querySelector('#blocksList [aria-current="true"]') || $('bName');
+      if (t) t.focus();
+      return;
+    }
     ($('btnNewBlock') || $('tab-calendar')).focus();
   }
 
@@ -2179,29 +2242,16 @@
     $('bCancel').hidden = true;
   }
 
-  function editBlock(id) {
-    const b = findBlock(id);
-    if (!b) return;
-    resetBlockForm();
-    ui.editBlock = id;
-    $('bName').value = b.name;
-    $('bKind').value = b.kind;
-    document.querySelectorAll('input[name="bDay"]').forEach((el) => { el.checked = b.days.includes(Number(el.value)); });
-    $('bStart').value = b.start;
-    $('bEnd').value = b.end;
-    $('bSubmit').textContent = '고친 내용 저장';
-    $('bCancel').hidden = false;
-    $('bDelete').hidden = false;
-    const from = document.activeElement;
-    openEditDialog('blockForm', q(b.name) + ' 고치기', () => {
-      if (from && document.contains(from)) return from;
-      const item = $('bc-' + id);
-      return item ? item.querySelector('button') : $('tab-calendar');
-    }, resetBlockForm);
-  }
+  function editBlock(id) { if (findBlock(id)) openBlocks(id); }
 
   function bindBlockForm() {
-    $('bCancel').addEventListener('click', () => { if (dialog) closeEditDialog(); else resetBlockForm(); });
+    $('bCancel').addEventListener('click', () => {
+      if (blocksOpen()) { selectBlock(ui.blockSel); $('bName').focus(); return; } // 되돌리기
+      if (dialog) closeEditDialog(); else resetBlockForm();
+    });
+    $('blocksClose').addEventListener('click', closeBlocks);
+    $('blocksDialog').addEventListener('click', (ev) => { if (ev.target === $('blocksDialog')) closeBlocks(); });
+    $('blocksDialog').addEventListener('close', afterBlocksClosed); // Esc
     $('bDelete').addEventListener('click', () => {
       const b = findBlock(ui.editBlock);
       if (!b) return;
@@ -2242,8 +2292,14 @@
           : '오늘 탭의 빈 시간에 바로 반영돼요.';
         showStatus('info', editing ? q(saved.name) + ' 고정 일정을 고쳤어요.' : q(saved.name) + ' 고정 일정을 넣었어요.', warn);
       }
-      resetBlockForm();
       renderAll();
+      if (blocksOpen()) {
+        selectBlock(saved.id);
+        const t = document.querySelector('#blocksList [aria-current="true"]');
+        if (t) t.focus();
+        return;
+      }
+      resetBlockForm();
       if (dialog) closeEditDialog(); else $('bName').focus();
     });
   }
@@ -2893,7 +2949,7 @@
     bindTabs();
     $('sideNewRoutine').addEventListener('click', openNewRoutine);
     $('sideOther').addEventListener('click', openOtherDialog);
-    const onWide = () => { renderRoutines(); renderToday(); };
+    const onWide = () => { renderRoutines(); renderToday(); renderBlocksDialog(); };
     if (WIDE.addEventListener) WIDE.addEventListener('change', onWide);
     bindActive();
     bindTaskForm();
