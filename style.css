@@ -199,7 +199,7 @@ legend { padding: 0 4px; }
 .tabs [role="tab"][aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 @media (max-width: 520px) {
   .brand-row { padding-block: 10px 0; }
-  .tabs { flex-basis: 100%; }
+  .tabs { flex: 1 1 0; min-width: 0; }
   .tabs [role="tab"] { flex: 1; padding: 0 4px; }
 }
 main { display: grid; gap: 20px; }
@@ -466,9 +466,9 @@ table.cal { width: 100%; border-collapse: separate; border-spacing: 3px; table-l
   border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer;
 }
 .icon-btn:hover { background: var(--chip); color: var(--ink); }
-.settings-btn { margin-left: auto; align-self: center; }
+.settings-btn { align-self: center; }
 .brand-row { align-items: center; }
-@media (min-width: 521px) { .brand-row { flex: 1; } .settings-btn { margin-right: 8px; } }
+@media (min-width: 521px) { .brand-row { flex: 1; } }
 .item-head .row { align-items: center; }
 .item-head .icon-btn { width: 32px; height: 32px; margin: -4px -6px -4px 0; }
 .rec-del .icon-btn { width: 32px; height: 32px; }
