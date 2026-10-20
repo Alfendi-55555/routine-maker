@@ -14,7 +14,8 @@
   --mint: #afeed6;
   --cream: #fff5af;
   --cream-ink: #1e2b29;
-  --block: #7d8784;
+  --block: #66706d;     /* 흰 글자 5.1:1 */
+  --field: #7f8a87;     /* 입력칸·고르는 칸 경계: 흰 바탕 3.6:1, 연한 바탕 3.3:1 */
   --block-past: #c3cbc8;
   --chip: #e8edeb;
   --gap: var(--mint);
@@ -46,6 +47,7 @@
     --cream: #4a4420;
     --cream-ink: #f5efc8;
     --block: #6f7b78;
+    --field: #6c7e79;
     --block-past: #3a4542;
     --chip: #22302c;
     --ok: #8fd8cc;
@@ -143,7 +145,7 @@ legend { padding: 0 4px; }
 .daypick span {
   display: inline-grid; place-items: center;
   width: 40px; height: 40px; border-radius: 50%;
-  border: 1px solid var(--line); background: var(--bg); font-weight: 600;
+  border: 1px solid var(--field); background: var(--bg); font-weight: 600;
 }
 .daypick input:checked + span { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .daypick input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -298,8 +300,8 @@ a.btn.ghost { color: var(--accent); }
 @media (max-width: 520px) { .principles { grid-template-columns: 1fr; } }
 
 /* 고정 일정 종류별 색 (흰 글자와 대비 4.5:1 이상) */
-.k-class { --k: #4f5b58; }
-.k-commute { --k: #7d8784; }
+.k-class { --k: #3d4745; }  /* 흰 글자 9:1 이상 */
+.k-commute { --k: #66706d; } /* 흰 글자 5.1:1 (예전 #7d8784는 3.7:1) */
 .k-work { --k: #a3aca9; --k-text: #1e2b29; }
 .k-etc { --k: #c4ccc9; --k-text: #1e2b29; }
 .tl-block { background: var(--block); }
@@ -405,7 +407,7 @@ table.cal { width: 100%; border-collapse: separate; border-spacing: 3px; table-l
 .rrow .fit-chip.tight, .rrow .fit-chip.nogap { background: var(--high-bg); }
 
 .other-btn {
-  min-height: 44px; margin-top: -8px; border: 1px dashed var(--teal-mid); border-radius: 10px;
+  min-height: 44px; margin-top: -8px; border: 1.5px dashed var(--accent); border-radius: 10px;
   background: var(--surface); color: var(--teal-ink); font: inherit; font-size: 0.92rem; font-weight: 600; cursor: pointer;
 }
 .other-btn:hover { background: var(--accent-soft); }
@@ -497,7 +499,7 @@ table.cal { width: 100%; border-collapse: separate; border-spacing: 3px; table-l
 
 /* 루틴 만들기: 단계가 아래로 쌓이는 폼 */
 .new-btn {
-  min-height: 48px; border: 1px dashed var(--teal-mid); border-radius: 12px; background: var(--surface);
+  min-height: 48px; border: 1.5px dashed var(--accent); border-radius: 12px; background: var(--surface);
   color: var(--teal-ink); font: inherit; font-size: 0.98rem; font-weight: 700; cursor: pointer;
 }
 .new-btn:hover { background: var(--accent-soft); }
@@ -596,10 +598,10 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .cc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .cc-h { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-align: center; }
 .cc { height: 30px; border-radius: 6px; display: grid; place-items: center; font-size: 0.74rem; font-weight: 700; color: var(--muted); border: 1px solid var(--line); }
-.cc.hit { background: var(--rc); border-color: var(--rc); color: #ffffff; }
+.cc.hit { background: var(--rc-fill, var(--rc)); border-color: var(--rc-fill, var(--rc)); color: var(--rc-on, #ffffff); }
 .cc.idle { border-color: transparent; background: var(--bg); opacity: 0.55; }
 .cc.today { box-shadow: inset 0 0 0 2px var(--rc); color: var(--ink); }
-.cc.hit.today { color: #ffffff; box-shadow: inset 0 0 0 2px var(--ink); }
+.cc.hit.today { color: var(--rc-on, #ffffff); box-shadow: inset 0 0 0 2px var(--ink); }
 .legend .lg-hit::before { background: var(--rc); }
 .legend .lg-today::before { background: transparent; box-shadow: inset 0 0 0 2px var(--rc); }
 .legend .lg-idle::before { background: var(--chip); }
@@ -882,3 +884,18 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
   .blocks-form { padding: 20px 24px; }
   .cal-head .edit-blocks { margin-left: auto; }
 }
+
+/* 접근성: 루틴 색 위 글자색 (WCAG 4.5:1)
+ * 흰 글자: 파랑 4.6 · 보라 4.9 · 갈색 5.4 / 진한 글자: 주황 5.2 · 연두 4.9 · 하늘 4.8 · 겨자 5.7
+ * 분홍은 둘 다 모자라 칸을 조금 어둡게(85%) 하고 흰 글자 5.2 */
+.rc-orange, .rc-lime, .rc-sky, .rc-mustard { --rc-on: #1e2b29; }
+.rc-pink { --rc-fill: color-mix(in srgb, var(--rc) 85%, #000000); }
+/* 입력칸·고르는 칸 경계 3:1 이상 */
+.field input, .field select, .field textarea { border-color: var(--field); }
+.kind-card { border-color: var(--field); }
+.field input[aria-invalid="true"], .field select[aria-invalid="true"] { border-color: var(--high); }
+@media (prefers-color-scheme: dark) {
+  /* 어두운 화면의 루틴 색은 밝아서 어떤 색이든 진한 글자 */
+  [class*="rc-"] { --rc-on: #0f1715; --rc-fill: var(--rc); }
+}
+.blocks-list .new-btn { width: 100%; }

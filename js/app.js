@@ -379,7 +379,7 @@
       dayBl.forEach((b) => {
         const top = y(C.toMin(b.start)), hh = y(C.toMin(b.end)) - top;
         items.push(h('button', {
-          type: 'button', class: 'ev fixed ' + kindClass(b.kind), style: 'top:' + top + 'px;height:' + Math.max(6, hh - 1) + 'px',
+          type: 'button', tabindex: '-1', class: 'ev fixed ' + kindClass(b.kind), style: 'top:' + top + 'px;height:' + Math.max(6, hh - 1) + 'px',
           title: b.name + ' ' + b.start + '–' + b.end, 'aria-label': C.DAY_NAMES[d.getDay()] + '요일 ' + b.name + ' ' + b.start + '–' + b.end + ', 고정 일정 고치기',
           onclick: () => editBlock(b.id)
         }, hh >= 28 ? h('span', { 'aria-hidden': 'true' }, b.name) : null));
@@ -391,7 +391,7 @@
         const routine = r.routineId ? findRoutine(r.routineId) : null;
         const label = clockText(r.startedAt) + ' ' + r.name + ' ' + r.actualMin + '분' + (C.countsAsDone(r) ? '' : ' (최소 미만)');
         items.push(h(routine ? 'button' : 'span', {
-          type: routine ? 'button' : null,
+          type: routine ? 'button' : null, tabindex: routine ? '-1' : null,
           class: 'ev rec ' + (routine ? rc(routine) : 'task') + (C.countsAsDone(r) || (!routine && C.finished(r)) ? '' : ' short'),
           style: 'top:' + top + 'px;height:' + Math.max(7, hh - 1) + 'px', title: label,
           'aria-label': routine ? label + ', 루틴 자세히 보기' : null,
@@ -407,7 +407,7 @@
           const top = y(x.start), hh = y(x.start + x.len) - top;
           if (hh <= 0) return;
           items.push(h('button', {
-            type: 'button', class: 'ev plan ' + rc(x.r), style: 'top:' + top + 'px;height:' + Math.max(7, hh - 1) + 'px',
+            type: 'button', tabindex: '-1', class: 'ev plan ' + rc(x.r), style: 'top:' + top + 'px;height:' + Math.max(7, hh - 1) + 'px',
             title: C.fmtHM(x.start) + ' ' + x.r.name + ' 할 차례', 'aria-label': C.DAY_NAMES[d.getDay()] + '요일 ' + C.fmtHM(x.start) + ' ' + x.r.name + ' 할 차례, 루틴 자세히 보기',
             onclick: () => openRoutine(x.r.id)
           }, hh >= 20 ? h('span', { 'aria-hidden': 'true' }, x.r.name) : null));
@@ -415,7 +415,7 @@
       }
       if (allDay.length) anyAllDay = true;
       lanes.push(h('div', { class: 'wk-lane' }, allDay.map((r) => h('button', {
-        type: 'button', class: 'ev-all ' + rc(r), title: r.name + ' · 쉬는 날이면', onclick: () => openRoutine(r.id),
+        type: 'button', tabindex: '-1', class: 'ev-all ' + rc(r), title: r.name + ' · 쉬는 날이면', onclick: () => openRoutine(r.id),
         'aria-label': C.DAY_NAMES[d.getDay()] + '요일 ' + r.name + ' 할 차례 (쉬는 날), 루틴 자세히 보기'
       }, r.name))));
       if (k === todayKey && L.nowMin >= ds && L.nowMin <= de) items.push(h('span', { class: 'wk-now', style: 'top:' + y(L.nowMin) + 'px', 'aria-hidden': 'true' }));
@@ -538,14 +538,17 @@
           ? h('ul', { class: 'plain' }, blocks.map((b) => {
             const skip = hol && off.includes(b.kind);
             return h('li', { class: 'gap-row' + (skip ? ' past' : '') },
-              h('span', null, h('span', { class: 'num' }, b.start + '–' + b.end), ' ' + b.name),
+              h('span', null, h('span', { class: 'num' }, b.start + '–' + b.end), ' ',
+                h('button', { type: 'button', class: 'name-link', onclick: () => editBlock(b.id), 'aria-label': b.name + ' ' + b.start + '–' + b.end + ', 고정 일정 고치기' }, b.name)),
               h('span', null, skip ? '공휴일이라 쉼' : b.kind));
           }))
           : h('p', { class: 'sub' }, '고정 일정이 없는 날이에요.')),
       h('div', { class: 'obs' }, h('span', { class: 'label' }, '기록'),
         recs.length
           ? h('ul', { class: 'plain' }, recs.map((r) => h('li', { class: 'gap-row' },
-            h('span', null, h('span', { class: 'dot rc ' + (r.routineId && findRoutine(r.routineId) ? rc(findRoutine(r.routineId)) : 'task'), 'aria-hidden': 'true' }), ' ', h('span', { class: 'num' }, clockText(r.startedAt)), ' ' + r.name + (r.version === 'min' ? ' (최소)' : '') + (!C.finished(r) ? ' (그만둠)' : C.countsAsDone(r) ? '' : ' (최소 미만)')),
+            h('span', null, h('span', { class: 'dot rc ' + (r.routineId && findRoutine(r.routineId) ? rc(findRoutine(r.routineId)) : 'task'), 'aria-hidden': 'true' }), ' ', h('span', { class: 'num' }, clockText(r.startedAt)), ' ',
+              r.routineId && findRoutine(r.routineId) ? h('button', { type: 'button', class: 'name-link', onclick: () => openRoutine(r.routineId), 'aria-label': r.name + ', 루틴 자세히 보기' }, r.name) : r.name,
+              (r.version === 'min' ? ' (최소)' : '') + (!C.finished(r) ? ' (그만둠)' : C.countsAsDone(r) ? '' : ' (최소 미만)')),
             h('span', { class: 'num' }, r.actualMin + '분'))))
           : h('p', { class: 'sub' }, '이날 기록이 없어요.')));
   }
