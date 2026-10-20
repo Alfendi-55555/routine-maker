@@ -2950,6 +2950,15 @@
 
   function init() {
     bindTabs();
+    // 본문으로 건너뛰기: 주소의 #탭 표시를 바꾸지 않고, 지금 탭의 첫 제목으로 초점을 옮긴다
+    $('skipLink').addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const panel = $('panel-' + ui.tab);
+      const target = (state.active && $('activeTitle')) || (panel && panel.querySelector('h2, h3')) || $('main');
+      if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+      target.focus();
+      target.scrollIntoView({ block: 'start' });
+    });
     $('sideNewRoutine').addEventListener('click', openNewRoutine);
     $('sideOther').addEventListener('click', openOtherDialog);
     const onWide = () => { renderRoutines(); renderToday(); renderBlocksDialog(); };

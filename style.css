@@ -85,8 +85,13 @@ p { margin: 0; }
 .hint:empty, .err:empty { display: none; }
 .eyebrow { font-size: 0.78rem; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
-.skip { position: absolute; left: 16px; top: -48px; background: var(--surface); color: var(--ink); padding: 8px 12px; border-radius: 8px; z-index: 10; }
-.skip:focus { top: 8px; }
+/* 본문으로 건너뛰기: 평소엔 숨어 있다가 Tab으로 초점이 오면 화면 맨 위에 (스크롤 위치와 상관없이) */
+.skip {
+  position: fixed; left: 50%; top: -60px; transform: translateX(-50%); z-index: 30;
+  padding: 10px 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink);
+  font-weight: 700; text-decoration: none; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+.skip:focus { top: 10px; }
 .masthead { display: grid; gap: 2px; }
 .tagline { color: var(--muted); font-size: 0.92rem; }
 .foot { color: var(--muted); font-size: 0.8rem; padding-top: 8px; border-top: 1px solid var(--line); }
@@ -284,7 +289,6 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; color:
 a.btn.primary { color: var(--accent-ink); }
 a.btn.ghost { color: var(--accent); }
 .about { text-decoration: none; }
-.skip { z-index: 20; }
 
 /* 소개 페이지 */
 .intro { gap: 32px; }
