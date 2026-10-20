@@ -106,6 +106,13 @@
     for (let d = new Date(made); d < we; d = C.addDays(d, 1)) if (r.days.includes(d.getDay())) n += 1;
     return n;
   }
+  /* 받침에 맞는 조사: josa('집 정리', '은', '는') → '는'. 받침을 알 수 없으면 '은(는)' */
+  function josa(word, withB, without) {
+    const c = String(word).replace(/[^가-힣0-9]/g, '').slice(-1);
+    if (!c) return withB + '(' + without + ')';
+    const has = /[0-9]/.test(c) ? '0136780'.includes(c) : (c.charCodeAt(0) - 0xac00) % 28 !== 0;
+    return has ? withB : without;
+  }
   /* 연속 N일이 / N번이 / N주가 */
   function iga(unit) { return unit === '주' ? '가' : '이'; }
   function streakText(st) { return st.current > 0 ? '연속 ' + st.current + st.unit : ''; }
@@ -733,7 +740,7 @@
     if (a.minMin) tick.style.left = Math.min(100, a.minMin / a.estimateMin * 100) + '%';
     $('shortConfirm').hidden = true;
     const delay = C.delayMinutes(a.plannedStartAt, a.startedAt);
-    if (delay != null) bits.push('앵커 ' + delay + '분 뒤 시작');
+    if (delay != null) bits.push(delay === 0 ? '제때 시작' : '예정보다 ' + delay + '분 늦게 시작');
     $('activeMeta').textContent = bits.join(' · ');
     stepTimer();
     timerTick = setInterval(stepTimer, 1000);
@@ -890,7 +897,7 @@
   function blockedByActive(errElId) {
     const msg = '진행 중인 일을 먼저 끝내 주세요';
     if (errElId) $(errElId).textContent = msg;
-    showStatus('error', msg + '.', q(state.active.name) + '이(가) 진행 중이에요. 끝내거나 그만둔 뒤 시작할 수 있어요.');
+    showStatus('error', msg + '.', q(state.active.name) + josa(state.active.name, '이', '가') + ' 진행 중이에요. 끝내거나 그만둔 뒤 시작할 수 있어요.');
     $('btnFinish').focus();
   }
 
@@ -1015,7 +1022,7 @@
         h('h2', { id: 'todayH', tabindex: '-1' }, (L.day.getMonth() + 1) + '월 ' + L.day.getDate() + '일 ' + C.DAY_NAMES[L.weekday] + '요일' +
           (L.nowMin >= 1440 ? ' 밤' : ''),
           ctx.holiday ? h('span', { class: 'pill holiday' }, ctx.holiday) : null),
-        skipped.length ? h('p', { class: 'sub' }, '공휴일이라 ' + skipped.map((b) => q(b.name)).join(', ') + '은(는) 빼고 계산했어요.') : null),
+        skipped.length ? h('p', { class: 'sub' }, '공휴일이라 ' + skipped.map((b) => q(b.name)).join(', ') + josa(skipped[skipped.length - 1].name, '은', '는') + ' 빼고 계산했어요.') : null),
       reviewBanner()));
 
     if (!state.blocks.length) {
@@ -1872,7 +1879,7 @@
     if (ui.editRoutine === id) resetRoutineForm();
     if (ui.panel && ui.panel.routineId === id) ui.panel = null;
     if (commit()) showStatus('info', q(r.name) + ' 루틴을 지웠어요.', '기록은 돌아보기에 남아 있어요.' +
-      (chained.length ? ' ' + chained.map((x) => q(x.name)).join(', ') + '은(는) 이제 아무 때나 루틴(주 ' + chained[0].perWeek + '회)이에요.' : ''));
+      (chained.length ? ' ' + chained.map((x) => q(x.name)).join(', ') + josa(chained[chained.length - 1].name, '은', '는') + ' 이제 아무 때나 루틴(주 ' + chained[0].perWeek + '회)이에요.' : ''));
     renderAll();
     ($('btnNewRoutine') || $('tab-routines')).focus();
   }
@@ -2092,7 +2099,7 @@
 
   function bindEditDialog() {
     $('editDialogClose').addEventListener('click', closeEditDialog);
-    $('editDialog').addEventListener('close', closeEditDialog); // Esc
+    $('editDialog').addEventListener('close', () => { if (!$('editDialog').open) closeEditDialog(); }); // Esc (늦게 온 close 이벤트가 다시 연 창을 닫지 않게)
     $('editDialog').addEventListener('click', (ev) => { if (ev.target === $('editDialog')) closeEditDialog(); }); // 바깥 누르기
   }
 
@@ -2120,7 +2127,7 @@
       if (!r) return;
       const chained = state.routines.filter((x) => x.anchor && x.anchor.type === 'routine' && x.anchor.routineId === r.id);
       $('rDeleteText').textContent = q(r.name) + ' 루틴을 지울까요? 지금까지의 기록은 돌아보기에 남아요.' +
-        (chained.length ? ' 이 루틴을 끝내면 시작하던 ' + chained.map((x) => q(x.name)).join(', ') + '은(는) 아무 때나 루틴이 돼요.' : '');
+        (chained.length ? ' 이 루틴을 끝내면 시작하던 ' + chained.map((x) => q(x.name)).join(', ') + josa(chained[chained.length - 1].name, '은', '는') + ' 아무 때나 루틴이 돼요.' : '');
       $('rDeleteConfirm').hidden = false;
       $('rDeleteNo').focus();
     });
@@ -2227,7 +2234,7 @@
     state.blocks = state.blocks.filter((x) => x.id !== id);
     if (ui.editBlock === id) resetBlockForm();
     if (commit()) showStatus('info', q(b.name) + ' 고정 일정을 지웠어요.',
-      anchored.length ? anchored.map((r) => q(r.name)).join(', ') + '은(는) 이제 아무 때나 루틴이에요. 루틴 탭에서 얼마나 자주 할지 확인해 주세요.' : '');
+      anchored.length ? anchored.map((r) => q(r.name)).join(', ') + josa(anchored[anchored.length - 1].name, '은', '는') + ' 이제 아무 때나 루틴이에요. 루틴 탭에서 얼마나 자주 할지 확인해 주세요.' : '');
     renderAll();
     if (blocksOpen()) {
       selectBlock(state.blocks.length ? sortedBlocks()[0].id : 'new');
@@ -2265,7 +2272,8 @@
     });
     $('blocksClose').addEventListener('click', closeBlocks);
     $('blocksDialog').addEventListener('click', (ev) => { if (ev.target === $('blocksDialog')) closeBlocks(); });
-    $('blocksDialog').addEventListener('close', afterBlocksClosed); // Esc
+    // Esc. 닫기 버튼은 바로 정리하고 close 이벤트는 늦게 올 수 있으니, 그 사이 다시 열었다면 건너뛴다
+    $('blocksDialog').addEventListener('close', () => { if (!blocksOpen()) afterBlocksClosed(); });
     $('bDelete').addEventListener('click', () => {
       const b = findBlock(ui.editBlock);
       if (!b) return;
@@ -2302,7 +2310,7 @@
       else { saved = Object.assign({ id: uid('b') }, data); state.blocks.push(saved); }
       if (commit()) {
         const warn = overlaps.length
-          ? overlaps.slice(0, 2).map((o) => C.DAY_NAMES[o.day] + '요일 ' + q(o.block.name)).join(', ') + '와(과) 시간이 겹쳐요. 맞는지 확인해 주세요.'
+          ? overlaps.slice(0, 2).map((o) => C.DAY_NAMES[o.day] + '요일 ' + q(o.block.name)).join(', ') + josa(overlaps[Math.min(overlaps.length, 2) - 1].block.name, '과', '와') + ' 시간이 겹쳐요. 맞는지 확인해 주세요.'
           : '오늘 탭의 빈 시간에 바로 반영돼요.';
         showStatus('info', editing ? q(saved.name) + ' 고정 일정을 고쳤어요.' : q(saved.name) + ' 고정 일정을 넣었어요.', warn);
       }
@@ -2612,7 +2620,7 @@
     const r = findRoutine(s.routineId);
     const v = { text: '', apply: null, edit: false, why: '' };
     if (s.kind === 'perWeek') {
-      v.text = q(r.name) + '은(는) 지난 2주 동안 ' + perWeekText(s.from) + ' 목표에 ' + s.counts.join('·') + '번 했어요. ' + perWeekText(s.to) + '로 낮춰 볼까요?';
+      v.text = q(r.name) + josa(r.name, '은', '는') + ' 지난 2주 동안 ' + perWeekText(s.from) + ' 목표에 ' + s.counts.join('·') + '번 했어요. ' + perWeekText(s.to) + '로 낮춰 볼까요?';
       v.apply = perWeekText(s.to) + '로 바꾸기';
       v.why = '주 몇 번 루틴이 지난 2주 연속 목표를 못 채우고, 2주 평균(' + C.round1((s.counts[0] + s.counts[1]) / 2) + '번)이 목표보다 1번 이상 적을 때 제안해요. 평균을 반올림한 횟수예요.';
     } else if (s.kind === 'baseMin') {
@@ -2624,13 +2632,13 @@
         last5.join('·') + '분 → 중앙값 ' + Math.round(s.median) + '분을 5분 단위로 맞췄어요.';
     } else if (s.kind === 'dropDay') {
       const stats = C.dayStats(state.records, r, new Date(), shift());
-      v.text = q(r.name) + '은(는) 지난 4주 동안 ' + C.DAY_NAMES[s.day] + '요일에 ' + s.total + '번 중 ' + s.done + '번 했어요. ' +
+      v.text = q(r.name) + josa(r.name, '은', '는') + ' 지난 4주 동안 ' + C.DAY_NAMES[s.day] + '요일에 ' + s.total + '번 중 ' + s.done + '번 했어요. ' +
         C.DAY_NAMES[s.day] + '요일을 빼고 ' + daysGoal(s.to) + '로 해 볼까요?';
       v.apply = C.DAY_NAMES[s.day] + '요일 빼기';
       v.why = '요일을 정한 루틴에서, 지난 4주 동안 4번 중 1번 이하로 한 요일이 있을 때 제안해요 (요일이 2개 이상일 때만). 요일별: ' +
         stats.map((x) => C.DAY_NAMES[x.day] + ' ' + x.done + '/' + x.total).join(' · ');
     } else if (s.kind === 'situationLow') {
-      const lead = q(r.name) + '은(는) 지난 4주 동안 상황이 ' + s.occ + '번 생겼는데 ' + s.hit + '번 했어요 (' + anchorPhrase(r) + '). ';
+      const lead = q(r.name) + josa(r.name, '은', '는') + ' 지난 4주 동안 상황이 ' + s.occ + '번 생겼는데 ' + s.hit + '번 했어요 (' + anchorPhrase(r) + '). ';
       if (s.to) {
         v.text = lead + '최소 시간을 ' + s.from + '분에서 ' + s.to + '분으로 줄여 볼까요?';
         v.apply = '최소 ' + s.to + '분으로 줄이기';
@@ -2640,7 +2648,7 @@
       }
       v.why = '상황 루틴의 지난 4주 실천이 절반보다 적을 때(상황이 4번 이상 있었을 때) 제안해요. 최소 시간이 5분보다 길면 절반으로 줄이자고, 이미 짧으면 시작 신호를 바꿔 보자고 해요.';
     } else {
-      v.text = q(r.name) + '은(는) 지난 4주 내내 목표를 채웠어요.';
+      v.text = q(r.name) + josa(r.name, '은', '는') + ' 지난 4주 내내 목표를 채웠어요.';
       v.why = '주 몇 번 루틴이 지난 4주 모두 목표를 채웠을 때 알려 드려요. 횟수를 늘리자고는 하지 않아요.';
     }
     return v;

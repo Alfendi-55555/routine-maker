@@ -457,7 +457,7 @@
   /* 오늘 상황이 생겼는지와 그 시각(앱 안의 하루 기준 분). day: 앱 안의 오늘(자정 Date) */
   function situationToday(r, env, day) {
     var a = r.anchor, shift = env.shift || 0, key = dayKey(day);
-    var minOf = function (iso) { return Math.round((Date.parse(iso) - day.getTime()) / 60000); };
+    var minOf = function (iso) { return Math.floor((Date.parse(iso) - day.getTime()) / 60000); };
     var onDay = function (iso) { return dayKey(Date.parse(iso) - shift * 60000) === key; };
     if (a.type === 'routine') {
       var recs = env.records.filter(function (x) { return x.routineId === a.routineId && onDay(x.startedAt); })
