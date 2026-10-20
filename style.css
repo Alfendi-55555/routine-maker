@@ -87,7 +87,8 @@ p { margin: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 /* 본문으로 건너뛰기: 평소엔 숨어 있다가 Tab으로 초점이 오면 화면 맨 위에 (스크롤 위치와 상관없이) */
 .skip {
-  position: fixed; left: 50%; top: -60px; transform: translateX(-50%); z-index: 30;
+  position: fixed; left: 50%; top: -200px; transform: translateX(-50%); z-index: 30;
+  max-width: calc(100vw - 32px); text-align: center;
   padding: 10px 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink);
   font-weight: 700; text-decoration: none; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
 }
