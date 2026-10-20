@@ -674,6 +674,7 @@
       const rid = routineFromHash(name);
       if (rid) { if (rid !== ui.routine || ui.tab !== 'routines') openRoutine(rid); return; }
       if (name === 'week') { switchTab('calendar'); return; }
+      if (name === 'routines' && ui.routine) { ui.routine = null; if (ui.tab === 'routines') { renderRoutines(); return; } }
       if (TABS.includes(name) && name !== ui.tab) switchTab(name);
     });
   }
@@ -2341,12 +2342,19 @@
   /* 한 주의 루틴별 실천: 요일·주 N회 루틴은 한 날/목표, 상황 루틴은 상황이 생긴 날 중 한 날 */
   function weekStats(r, ws) {
     const we = C.addDays(ws, 7);
+    // 루틴을 만들기 전 기간은 목표로 세지 않는다
+    const made = C.startOfDay(new Date(Date.parse(r.createdAt) - shift() * 60000));
+    if (made >= we) return { done: 0, target: 0, text: '–' };
     if (C.isSituation(r)) {
       const p = C.situationProgress(r, sitEnv(), ws, we);
       return { done: p.hit, target: p.occ, text: p.occ ? p.occ + '번 중 ' + p.hit + '번' : '상황 없음' };
     }
     const done = Object.keys(C.doneDays(state.records, r.id, ws, we, shift())).length;
-    const target = weekTarget(r);
+    let target = weekTarget(r);
+    if (C.scheduleOf(r) === 'days' && made > ws) {
+      target = 0;
+      for (let d = new Date(made); d < we; d = C.addDays(d, 1)) if (r.days.includes(d.getDay())) target += 1;
+    }
     return { done: Math.min(done, target), target, text: done + '/' + target };
   }
   function weekRecords(ws) {
