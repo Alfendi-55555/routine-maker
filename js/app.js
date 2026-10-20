@@ -94,8 +94,18 @@
     if (sc === 'days') return daysGoal(r.days);
     return perWeekText(r.perWeek) + ' (요일 자유)';
   }
-  /* 이번 주에 해야 할 날 수: 요일 루틴은 이번 주의 그 요일 수, 주 N회 루틴은 N */
-  function weekTarget(r) { return C.scheduleOf(r) === 'days' ? r.days.length : r.perWeek; }
+  /* 그 주(기본: 이번 주)에 해야 할 날 수: 요일 루틴은 그 요일 수, 주 N회 루틴은 N.
+   * 요일 루틴을 주 중간에 만들었다면 만든 날부터 센다 */
+  function weekTarget(r, ws) {
+    if (C.scheduleOf(r) !== 'days') return r.perWeek;
+    ws = ws || C.startOfWeek(new Date(Date.now() - shift() * 60000));
+    const we = C.addDays(ws, 7);
+    const made = C.startOfDay(new Date(Date.parse(r.createdAt) - shift() * 60000));
+    if (made <= ws) return r.days.length;
+    let n = 0;
+    for (let d = new Date(made); d < we; d = C.addDays(d, 1)) if (r.days.includes(d.getDay())) n += 1;
+    return n;
+  }
   /* 연속 N일이 / N번이 / N주가 */
   function iga(unit) { return unit === '주' ? '가' : '이'; }
   function streakText(st) { return st.current > 0 ? '연속 ' + st.current + st.unit : ''; }
@@ -2350,11 +2360,7 @@
       return { done: p.hit, target: p.occ, text: p.occ ? p.occ + '번 중 ' + p.hit + '번' : '상황 없음' };
     }
     const done = Object.keys(C.doneDays(state.records, r.id, ws, we, shift())).length;
-    let target = weekTarget(r);
-    if (C.scheduleOf(r) === 'days' && made > ws) {
-      target = 0;
-      for (let d = new Date(made); d < we; d = C.addDays(d, 1)) if (r.days.includes(d.getDay())) target += 1;
-    }
+    const target = weekTarget(r, ws);
     return { done: Math.min(done, target), target, text: done + '/' + target };
   }
   function weekRecords(ws) {
