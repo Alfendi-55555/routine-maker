@@ -1182,8 +1182,10 @@
         h('span', { class: 'dot rc ' + rc(r), 'aria-hidden': 'true' }),
         h('div', { class: 'now-main' },
           h('button', { type: 'button', class: 'now-name name-link', onclick: () => openRoutine(r.id), 'aria-label': q(r.name) + ' 자세히 보기' }, r.name),
-          h('span', { class: 'now-meta' }, '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분' +
-            (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.missed ? ' · 하면 ' + streakText(pick.streak) + iga(pick.streak.unit) + ' 이어져요' : ''))),
+          h('span', { class: 'sr-only' }, '기본 ' + r.baseMin + '분 · 최소 ' + r.minMin + '분' + (pick.since != null ? ' · ' + sinceText(pick) : '') + (pick.streak.current ? ' · ' + streakText(pick.streak) : '')),
+          h('span', { class: 'rtags', 'aria-hidden': 'true' }, kindTag(r, pick.since != null ? sinceText(pick) : anchorShort(r, pick.anchor)),
+            rtag(ICON_TIMER, r.baseMin + '분 · 최소 ' + r.minMin + '분'), streakPill(r, pick.streak)),
+          pick.missed ? h('span', { class: 'now-meta' }, '하면 ' + streakText(pick.streak) + iga(pick.streak.unit) + ' 이어져요') : null),
         h('button', { type: 'button', class: 'btn primary start-btn', onclick: () => onStartRoutine(r) }, '시작')),
       h('div', { class: 'now-foot' },
         h('span', { class: 'fit-chip ' + pick.nowFit }, FIT_LONG[pick.nowFit]),
@@ -1325,7 +1327,9 @@
         h('span', { class: 'dot rc ' + rc(r), 'aria-hidden': 'true' }),
         h('div', { class: 'rrow-main' },
           h('h4', { class: 'rrow-name' }, h('button', { type: 'button', class: 'name-link', onclick: () => openRoutine(r.id), 'aria-label': q(r.name) + ' 자세히 보기' }, r.name)),
-          h('span', { class: 'rrow-meta' }, anchorShort(r, info.anchor) + ' · 기본 ' + r.baseMin + '분 · ' + weekText(info) + (info.streak.current ? ' · ' + streakText(info.streak) : '')),
+          h('span', { class: 'sr-only' }, anchorShort(r, info.anchor) + ' · 기본 ' + r.baseMin + '분 · ' + weekText(info) + (info.streak.current ? ' · ' + streakText(info.streak) : '')),
+          h('span', { class: 'rtags', 'aria-hidden': 'true' }, kindTag(r, anchorShort(r, info.anchor)), rtag(ICON_TIMER, r.baseMin + '분'),
+            h('span', { class: 'rtag plain' }, weekText(info)), streakPill(r, info.streak)),
           notes.length ? h('span', { class: 'rrow-note' }, notes.join(' · ')) : null),
         h('span', { class: 'fit-word ' + info.fit }, FIT_SHORT[info.fit]),
         h('button', { type: 'button', class: 'btn small outline', onclick: () => onStartRoutine(r), 'aria-label': q(r.name) + ' 시작' }, '시작')));
@@ -1545,6 +1549,8 @@
   const ICON_SIGNAL = 'M6 5v6a3 3 0 0 0 3 3h10M15 10l4 4-4 4';
   const ICON_ANYTIME = 'M6 20v-2a6 6 0 1 1 12 0v2a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zM6 4v2a6 6 0 1 0 12 0V4a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z';
   const ICON_REPEAT = 'M4 12V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 12v3a3 3 0 0 1-3 3H4M7 21l-3-3 3-3';
+  const ICON_TIMER = 'M5 13a7 7 0 1 0 14 0a7 7 0 0 0-14 0zM14.5 10.5L12 13M17 8l1-1M14 3h-4';
+  const ICON_CATEGORY = 'M4 6h16M4 12h10M4 18h6';
   const ICON_SPROUT = 'M12 21v-8M12 13C12 9 9.5 6.5 5 6.5 5 10.5 7.5 13 12 13ZM12 13C12 9.5 14.5 7.5 19 7.5 19 11 16.5 13 12 13Z';
 
   // ========== 루틴 ==========
@@ -1589,12 +1595,26 @@
     return [anchorPhrase(r), C.isSituation(r) ? null : goalText(r), week, st.current ? streakText(st) : null].filter(Boolean).join(' · ');
   }
 
+  /* 칩: 아이콘 + 짧은 글. 루틴 종류 아이콘은 시계(시각) · 꺾인 화살표(상황) · 모래시계(아무 때나) */
+  function rtag(icon, text) { return h('span', { class: 'rtag' }, svgIcon(icon, 13), text); }
+  function kindTag(r, text) {
+    const kind = C.routineKind(r);
+    return rtag(kind === 'time' ? ICON_CLOCK : kind === 'situation' ? ICON_SIGNAL : ICON_ANYTIME,
+      text || (kind === 'time' ? r.anchor.time : kind === 'situation' ? anchorPhrase(r) : '아무 때나'));
+  }
+  function freqTag(r) {
+    const sc = C.scheduleOf(r);
+    return sc === 'situation' ? null : rtag(ICON_REPEAT, sc === 'days' ? daysGoal(r.days) : perWeekText(r.perWeek));
+  }
+  /* 연속 기록: 새싹 + 숫자 (0이면 없음). 큰 배지는 루틴 목록, 작은 알약은 줄 안에서 */
+  function streakPill(r, st) {
+    return st.current ? h('span', { class: 'spill ' + rc(r) }, svgIcon(ICON_SPROUT, 13), st.current + st.unit) : null;
+  }
+
   /* 루틴 카드 속: 이름, 조건·빈도 칩, 이번 주 막대와 숫자, 오른쪽 연속 배지 (읽어 주는 문장은 따로) */
   function rcardBody(r) {
-    const kind = C.routineKind(r), sc = C.scheduleOf(r);
-    const tag = (icon, text) => h('span', { class: 'rtag' }, svgIcon(icon, 13), text);
-    const tags = [kind === 'time' ? tag(ICON_CLOCK, r.anchor.time) : kind === 'situation' ? tag(ICON_SIGNAL, anchorPhrase(r)) : tag(ICON_ANYTIME, '아무 때나')];
-    if (sc !== 'situation') tags.push(tag(ICON_REPEAT, sc === 'days' ? daysGoal(r.days) : perWeekText(r.perWeek)));
+    const sc = C.scheduleOf(r);
+    const tags = [kindTag(r), freqTag(r)];
     let count;
     if (sc === 'situation') { const wk = C.situationWeek(r, sitEnv()); count = wk.occ ? '상황 ' + wk.occ + '번 중 ' + wk.hit + '번' : '이번 주 상황 없음'; }
     else count = C.weekDone(state.records, r.id, new Date(), shift()) + '/' + weekTarget(r);
@@ -1690,7 +1710,8 @@
       h('span', { class: 'rd-badge', 'aria-hidden': 'true' }),
       h('div', { class: 'rd-title' },
         h('h2', { id: 'rdTitle', tabindex: '-1' }, r.name),
-        h('span', { class: 'sub' }, kindName(r) + ' · ' + r.category + ' · ' + COLOR_NAMES[colorOf(r)])),
+        h('span', { class: 'sr-only' }, kindName(r) + ' · ' + r.category),
+        h('span', { class: 'rtags', 'aria-hidden': 'true' }, kindTag(r), freqTag(r), rtag(ICON_CATEGORY, r.category))),
       pencilBtn(q(r.name) + ' 고치기', () => editRoutine(r.id), 'rd-edit')));
 
     // 2. 지금 상태
@@ -1701,7 +1722,7 @@
       info.todo && !info.doneToday ? fitLine(info) : null,
       h('div', { class: 'tiles' },
         h('div', { class: 'tile' }, h('span', null, '이번 주'), h('b', null, info.situation ? info.done + ' / ' + info.target + '번' : info.done + ' / ' + info.target)),
-        h('div', { class: 'tile accent ' + rc(r) }, h('span', null, '연속'), h('b', null, st.current + st.unit)),
+        h('div', { class: 'tile accent ' + rc(r) }, h('span', { class: 'tile-ic' }, svgIcon(ICON_SPROUT, 14), '연속'), h('b', null, st.current + st.unit)),
         h('div', { class: 'tile' }, h('span', null, '최고'), h('b', null, st.best + st.unit))),
       h('div', { class: 'row' },
         h('button', { type: 'button', class: 'btn small ghost', onclick: () => openPanel(r.id, 'manual') }, '타이머 없이 기록')));
@@ -2434,7 +2455,7 @@
       tile('루틴에 쓴 시간', C.fmtDuration(routineMin(recs)) || '0분', '지난주 ' + (C.fmtDuration(routineMin(prevRecs)) || '0분')),
       tile('다른 활동 · 예상 대비', taskRatio != null ? taskRatio.toFixed(1) + '배' : '–', tasks.length ? '기록 ' + tasks.length + '개' : '이 주에는 기록이 없어요'),
       isNow && top && top.st.current
-        ? tile('가장 긴 연속', top.st.current + top.st.unit, top.r.name, 'accent ' + rc(top.r))
+        ? tile(h('span', { class: 'tile-ic' }, svgIcon(ICON_SPROUT, 14), '가장 긴 연속'), top.st.current + top.st.unit, top.r.name, 'accent ' + rc(top.r))
         : tile('기록한 날', new Set(recs.map((x) => C.logicalKey(x.startedAt, shift()))).size + '일', '7일 중'));
 
     // 루틴별 표
@@ -2452,7 +2473,7 @@
             h('td', null, weekStrip(r, ws)),
             h('td', null, h('b', null, s.text)),
             h('td', { class: 'sub' }, p.text),
-            isNow ? h('td', null, st.current ? st.current + st.unit : '–') : null);
+            isNow ? h('td', null, streakPill(r, st) || '–') : null);
         })))) : null;
 
     box.replaceChildren(h('h2', { class: 'sr-only' }, '돌아보기'), head, tiles,

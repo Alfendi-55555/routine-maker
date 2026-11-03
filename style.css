@@ -425,7 +425,6 @@ table.cal { width: 100%; border-collapse: separate; border-spacing: 3px; table-l
 .rrow-line { display: flex; align-items: center; gap: 10px; }
 .rrow-main { flex: 1; min-width: 0; display: grid; }
 .rrow-name { font-size: 0.98rem; font-weight: 700; margin: 0; }
-.rrow-meta { font-size: 0.78rem; color: var(--muted); }
 .rrow-note { font-size: 0.78rem; color: var(--warn); font-weight: 600; }
 .fit-word { flex: none; font-size: 0.76rem; font-weight: 700; color: var(--teal-ink); }
 .fit-word.min { color: var(--warn); }
@@ -574,6 +573,13 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .rtags { display: flex; flex-wrap: wrap; gap: 6px; }
 .rtag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); font-size: 0.78rem; color: var(--muted); }
 .rtag > svg { flex: none; }
+.spill { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; padding: 2px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 700;
+  background: var(--rc-soft); color: color-mix(in srgb, var(--rc) 45%, var(--ink)); }
+.rrow-main > .rtags, .now-main > .rtags { margin-top: 4px; }
+.tile-ic { display: inline-flex; align-items: center; gap: 3px; }
+/* 칩이 붙어 줄이 길어져도 색 점은 이름 옆에 */
+.rrow-line > .dot, .now-row > .dot { align-self: flex-start; margin-top: 0.5em; }
+.rd-title > .rtags { margin-top: 6px; }
 /* 이번 주: 막대 + 숫자 */
 .rweek { display: flex; align-items: center; gap: 8px; }
 .rweek .strip { margin-top: 0; }
