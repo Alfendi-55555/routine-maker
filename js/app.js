@@ -1541,6 +1541,11 @@
   const ICON_NEXT = 'M9 6l6 6-6 6';
   const ICON_BACK = 'M15 6l-6 6 6 6';
   const ICON_ARROW = 'M5 12h14M13 6l6 6-6 6';
+  const ICON_CLOCK = 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M12 7v5l3 2';
+  const ICON_SIGNAL = 'M6 5v6a3 3 0 0 0 3 3h10M15 10l4 4-4 4';
+  const ICON_ANYTIME = 'M6 20v-2a6 6 0 1 1 12 0v2a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zM6 4v2a6 6 0 1 0 12 0V4a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z';
+  const ICON_REPEAT = 'M4 12V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 12v3a3 3 0 0 1-3 3H4M7 21l-3-3 3-3';
+  const ICON_SPROUT = 'M12 21v-8M12 13C12 9 9.5 6.5 5 6.5 5 10.5 7.5 13 12 13ZM12 13C12 9.5 14.5 7.5 19 7.5 19 11 16.5 13 12 13Z';
 
   // ========== 루틴 ==========
   /* 이번 주 작은 막대: 요일 루틴은 월~일 칸, 주 N회는 N칸, 상황 루틴은 이번 주 상황 수만큼 */
@@ -1584,6 +1589,27 @@
     return [anchorPhrase(r), C.isSituation(r) ? null : goalText(r), week, st.current ? streakText(st) : null].filter(Boolean).join(' · ');
   }
 
+  /* 루틴 카드 속: 이름, 조건·빈도 칩, 이번 주 막대와 숫자, 오른쪽 연속 배지 (읽어 주는 문장은 따로) */
+  function rcardBody(r) {
+    const kind = C.routineKind(r), sc = C.scheduleOf(r);
+    const tag = (icon, text) => h('span', { class: 'rtag' }, svgIcon(icon, 13), text);
+    const tags = [kind === 'time' ? tag(ICON_CLOCK, r.anchor.time) : kind === 'situation' ? tag(ICON_SIGNAL, anchorPhrase(r)) : tag(ICON_ANYTIME, '아무 때나')];
+    if (sc !== 'situation') tags.push(tag(ICON_REPEAT, sc === 'days' ? daysGoal(r.days) : perWeekText(r.perWeek)));
+    let count;
+    if (sc === 'situation') { const wk = C.situationWeek(r, sitEnv()); count = wk.occ ? '상황 ' + wk.occ + '번 중 ' + wk.hit + '번' : '이번 주 상황 없음'; }
+    else count = C.weekDone(state.records, r.id, new Date(), shift()) + '/' + weekTarget(r);
+    const st = C.streak(r, sitEnv());
+    return [
+      h('span', { class: 'rc-dot', 'aria-hidden': 'true' }),
+      h('span', { class: 'rcard-main' },
+        h('span', { class: 'rcard-name' }, r.name),
+        h('span', { class: 'rtags', 'aria-hidden': 'true' }, tags),
+        h('span', { class: 'rweek', 'aria-hidden': 'true' }, weekStrip(r), h('span', { class: 'rweek-n' }, count)),
+        h('span', { class: 'sr-only' }, kindName(r) + ', ' + routineSummary(r))),
+      h('span', { class: 'sbadge' + (st.current ? '' : ' zero'), 'aria-hidden': 'true' }, svgIcon(ICON_SPROUT, 18), h('b', null, String(st.current)), h('small', null, st.unit))
+    ];
+  }
+
   function renderRoutines() {
     const box = $('routinesDyn');
     const open = ui.routine && findRoutine(ui.routine);
@@ -1594,10 +1620,7 @@
           h('div', { class: 'section-head' }, h('h2', null, '내 루틴 ' + state.routines.length + '개')),
           h('ul', { class: 'rcards', role: 'list' }, state.routines.map((r) => h('li', null,
             h('button', { type: 'button', class: 'rcard ' + rc(r) + (r.id === sel.id ? ' on' : ''), id: 'rc-' + r.id, 'aria-current': r.id === sel.id ? 'true' : null, onclick: () => openRoutine(r.id) },
-              h('span', { class: 'rc-dot', 'aria-hidden': 'true' }),
-              h('span', { class: 'rcard-main' },
-                h('span', { class: 'rcard-top' }, h('span', { class: 'rcard-name' }, r.name), h('span', { class: 'rcard-kind' }, kindName(r))),
-                h('span', { class: 'rcard-meta' }, routineSummary(r))))))),
+              rcardBody(r))))),
           h('button', { type: 'button', class: 'new-btn', id: 'btnNewRoutine', onclick: openNewRoutine }, '+ 새 루틴 만들기')),
         h('section', { class: 'rt-detail', 'aria-labelledby': 'rdTitle' }, routineDetail(sel))));
       return;
@@ -1611,13 +1634,7 @@
     } else {
       nodes.push(h('div', { class: 'section-head' }, h('h3', null, '내 루틴 ' + state.routines.length + '개')));
       nodes.push(h('ul', { class: 'rcards', role: 'list' }, state.routines.map((r) => h('li', null,
-        h('button', { type: 'button', class: 'rcard ' + rc(r), id: 'rc-' + r.id, onclick: () => openRoutine(r.id) },
-          h('span', { class: 'rc-dot', 'aria-hidden': 'true' }),
-          h('span', { class: 'rcard-main' },
-            h('span', { class: 'rcard-top' }, h('span', { class: 'rcard-name' }, r.name), h('span', { class: 'rcard-kind' }, kindName(r))),
-            h('span', { class: 'rcard-meta' }, routineSummary(r)),
-            weekStrip(r)),
-          svgIcon(ICON_NEXT))))));
+        h('button', { type: 'button', class: 'rcard ' + rc(r), id: 'rc-' + r.id, onclick: () => openRoutine(r.id) }, rcardBody(r))))));
     }
     box.replaceChildren(...nodes);
   }

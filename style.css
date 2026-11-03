@@ -562,17 +562,28 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 /* 루틴 탭: 카드 목록 */
 .rcards { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .rcard {
-  width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) 16px; gap: 10px; align-items: center; text-align: left;
+  width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left;
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 12px 12px 14px;
   font: inherit; color: inherit; cursor: pointer;
 }
 .rcard:hover { border-color: var(--muted); }
-.rcard > svg { color: var(--muted); }
-.rcard-main { display: grid; gap: 3px; min-width: 0; }
-.rcard-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.rcard > .rc-dot { align-self: start; margin-top: 7px; }
+.rcard-main { display: grid; gap: 6px; min-width: 0; }
 .rcard-name { font-weight: 700; font-size: 1rem; }
-.rcard-kind { font-size: 0.75rem; font-weight: 700; color: var(--muted); }
-.rcard-meta { font-size: 0.84rem; color: var(--muted); }
+/* 조건·빈도 칩 */
+.rtags { display: flex; flex-wrap: wrap; gap: 6px; }
+.rtag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); font-size: 0.78rem; color: var(--muted); }
+.rtag > svg { flex: none; }
+/* 이번 주: 막대 + 숫자 */
+.rweek { display: flex; align-items: center; gap: 8px; }
+.rweek .strip { margin-top: 0; }
+.rweek-n { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* 연속 배지: 새싹 + 숫자 + 단위 */
+.sbadge { display: grid; justify-items: center; align-content: center; gap: 1px; min-width: 46px; padding: 6px 4px; border-radius: 12px; line-height: 1;
+  background: var(--rc-soft); color: color-mix(in srgb, var(--rc) 45%, var(--ink)); }
+.sbadge b { font-size: 1.02rem; }
+.sbadge small { font-size: 0.7rem; font-weight: 700; }
+.sbadge.zero { background: var(--chip); color: var(--muted); }
 .strip { display: flex; gap: 3px; margin-top: 3px; }
 .strip > span { width: 18px; height: 6px; border-radius: 2px; background: var(--chip); }
 .strip .s-hit { background: var(--rc); }
@@ -777,7 +788,6 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
   /* 루틴: 목록과 상세를 나란히 */
   .rt-cols { grid-template-columns: 320px minmax(0, 1fr); }
   .rt-list { display: grid; gap: 10px; align-content: start; position: sticky; top: 24px; }
-  .rt-list .rcard { grid-template-columns: 12px minmax(0, 1fr); }
   .rt-detail { display: grid; gap: 16px; min-width: 0; }
   .rd-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
   .rd-col { display: grid; gap: 16px; min-width: 0; }
