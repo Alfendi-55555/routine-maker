@@ -409,11 +409,16 @@
       });
       return set;
     }
+    // 일정 시각은 실제 시계 기준: 앱 안의 오늘 0시부터 지금까지 (자정을 넘기면 1440분 이상)
+    var nowMin = (new Date(env.now).getTime() - today.getTime()) / 60000;
+    var doneToday = function () { return !!doneDays(env.records, r.id, today, addDays(today, 1), shift)[dayKey(today)]; };
     for (var d = new Date(s); d.getTime() < e; d = addDays(d, 1)) {
       var hol = holidayName(env.holidays || [], d) != null;
       var wd = d.getDay();
       var dayBl = blocksForDay(env.blocks, hol, env.off || DEFAULT_HOLIDAY_OFF).filter(function (b) { return b.days.indexOf(wd) !== -1; });
-      if (a.type === 'block' && dayBl.some(function (b) { return b.id === a.blockId; })) set[dayKey(d)] = true;
+      var bl = a.type === 'block' && dayBl.filter(function (b) { return b.id === a.blockId; })[0];
+      // 오늘은 그 일정이 끝났거나 이미 했을 때만 센다 (아직 오지 않은 상황을 미리 세지 않게)
+      if (bl && (d.getTime() !== today.getTime() || toMin(bl.end) <= nowMin || doneToday())) set[dayKey(d)] = true;
       if (a.type === 'dayoff' && (hol || dayBl.length === 0)) set[dayKey(d)] = true;
     }
     return set;
@@ -656,7 +661,8 @@
   /* 루틴 수행 시간 관찰. 유형에 따라 비교 기준을 바꾼다.
    * fixed: 분 (예전 최소 버전 기록 제외) / count: 단위당 분 / none: 배율 */
   function observeDuration(records, routine) {
-    var rs = records.filter(function (r) { return r.routineId === routine.id && finished(r); }).sort(byStart);
+    // 최소 시간 전에 끝낸 기록과 그만둔 일은 뺀다 (돌아보기의 예상과 실제와 같은 기준)
+    var rs = records.filter(function (r) { return r.routineId === routine.id && countsAsDone(r); }).sort(byStart);
     var type = routine.measure.type, values;
     if (type === 'fixed') values = rs.filter(function (r) { return r.version !== 'min'; }).map(function (r) { return r.actualMin; });
     else if (type === 'count') values = rs.filter(function (r) { return r.amount > 0; }).map(function (r) { return r.actualMin / r.amount; });

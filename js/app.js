@@ -1794,9 +1794,11 @@
     const last = recs.slice(-10);
     const top = Math.max(r.baseMin * 1.3, ...last.map((x) => x.actualMin));
     const pct = (m) => Math.min(100, m / top * 100);
-    const med = C.median(recs.slice(-5).map((x) => x.actualMin));
+    // 보통 시간은 횟수로 센 기록만 (최소 미만·그만둔 일은 막대로만 보인다)
+    const counted = recs.filter(C.countsAsDone).slice(-5);
+    const med = counted.length ? C.median(counted.map((x) => x.actualMin)) : null;
     sec.append(
-      h('div', { class: 'section-head' }, h('span', null, '걸린 시간 ', h('span', { class: 'sub' }, '최근 ' + last.length + '번')), h('b', null, '보통 ' + Math.round(med) + '분')),
+      h('div', { class: 'section-head' }, h('span', null, '걸린 시간 ', h('span', { class: 'sub' }, '최근 ' + last.length + '번')), med != null ? h('b', null, '보통 ' + Math.round(med) + '분') : null),
       h('div', { class: 'tbars ' + rc(r), role: 'img', 'aria-label': '최근 ' + last.length + '번 걸린 시간: ' + last.map((x) => x.actualMin).join(', ') + '분' },
         last.map((x, i) => {
           const changed = C.lastChange(r);

@@ -196,6 +196,10 @@ test('관찰: 분량 고정은 최소 버전을 빼고, 분량 변동은 단위�
   const cs = rs.map(r => Object.assign({}, r, { amount: 20 }));
   cs.push(rec({ amount: null }));
   assert.equal(Calc.observeDuration(cs, count).n, 11);
+  // 최소 시간 전에 끝낸 기록과 그만둔 일은 변화 관찰에서도 뺀다
+  const none = { id: 'r1', measure: { type: 'none' } };
+  const ns = rs.slice(0, 10).concat(rec({ startedAt: iso(2026, 9, 21), actualMin: 2, minMin: 10 }), rec({ startedAt: iso(2026, 9, 22), actualMin: 3, outcome: 'stopped' }));
+  assert.equal(Calc.observeDuration(ns, none).n, 10);
 });
 
 test('관찰 문장에는 판단하는 말을 쓰지 않는다', () => {
@@ -443,6 +447,18 @@ test('상황 루틴: 쉬는 날은 공휴일이거나 고정 일정이 없는 �
   const env = { blocks, records: [], events: [], holidays: [{ date: '2026-10-14', name: '테스트 공휴일' }], off: ['수업', '통학'], shift: 0, now };
   // 이번 주: 수(공휴일, 수업 쉼) + 일(일정 없음) = 2일. 토요일은 알바가 있어 쉬는 날이 아님
   assert.deepEqual(Calc.situationWeek(r, env), { occ: 2, hit: 0 });
+});
+
+test('상황 루틴: 오늘 고정 일정은 끝난 뒤에만 상황으로 센다', () => {
+  const r = { id: 'r5', anchor: { type: 'block', blockId: 'b1' }, createdAt: iso(2026, 10, 1) };
+  const blocks = [{ id: 'b1', name: '자료구조', kind: '수업', days: [1, 3], start: '10:30', end: '11:45' }];
+  const at = (h, m) => ({ blocks, records: [], events: [], holidays: [], shift: 0, now: new Date(2026, 9, 14, h, m) }); // 수
+  assert.deepEqual(Calc.situationWeek(r, at(9, 0)), { occ: 1, hit: 0 }, '수업 전에는 월요일만');
+  assert.deepEqual(Calc.situationWeek(r, at(11, 45)), { occ: 2, hit: 0 }, '수업이 끝나면 오늘도');
+  const early = Object.assign(at(9, 0), { records: [rec({ routineId: 'r5', startedAt: iso(2026, 10, 14, 8) })] });
+  assert.deepEqual(Calc.situationWeek(r, early), { occ: 2, hit: 1 }, '먼저 했으면 오늘도 센다');
+  const shifted = Object.assign(at(11, 50), { shift: 60 }); // 하루 끝이 새벽 1시여도 일정 시각은 실제 시계로
+  assert.deepEqual(Calc.situationWeek(r, shifted), { occ: 2, hit: 0 });
 });
 
 test('상황 루틴: 저장소 검사 (perWeek 없음, 상황 버튼 기록)', () => {
