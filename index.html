@@ -56,6 +56,7 @@
     <div class="progress" id="progress" aria-hidden="true"><span id="progressBar"></span><i id="progressMin" title="최소 시간" hidden></i></div>
     <p class="active-note" id="activeNote" hidden></p>
     <p class="meta" id="activeMeta"></p>
+    <p class="meta" id="activeSteps" hidden></p>
     <div class="row" id="activeButtons">
       <button type="button" class="btn primary" id="btnFinish">끝냈어요</button>
       <button type="button" class="btn" id="btnAbandon">그만두기</button>
@@ -123,6 +124,7 @@
               <p class="err" id="tEstimateErr"></p>
             </div>
           </div>
+          <div id="tSteps"></div>
           <p class="hint" id="tHint" aria-live="polite"></p>
           <label class="check"><input type="checkbox" id="tManual"> 이미 끝낸 일이에요 (실제 시간 직접 입력)</label>
           <div class="grid2">

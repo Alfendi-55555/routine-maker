@@ -461,6 +461,35 @@ test('상황 루틴: 오늘 고정 일정은 끝난 뒤에만 상황으로 센�
   assert.deepEqual(Calc.situationWeek(r, shifted), { occ: 2, hit: 0 });
 });
 
+// ---------- 예상을 단계로 나누기 ----------
+test('단계: 같은 활동에서 가장 최근에 쓴 단계 이름을 돌려준다', () => {
+  const t = (cat, day, names) => rec({ kind: 'task', routineId: null, category: cat, startedAt: iso(2026, 10, day), steps: names.map((n) => ({ name: n, min: 10 })) });
+  const records = [t('과제', 1, ['자료', '초안']), t('과제', 5, ['자료 찾기', '초안 쓰기', '검토']), t('발표', 7, ['슬라이드']),
+    rec({ routineId: 'r9', startedAt: iso(2026, 10, 8), steps: [{ name: '루틴 단계', min: 5 }] }), rec({ kind: 'task', routineId: null, category: '과제', startedAt: iso(2026, 10, 9) })];
+  assert.deepEqual(Calc.recentSteps(records, { category: '과제' }), ['자료 찾기', '초안 쓰기', '검토'], '다른 활동은 카테고리 기준, 단계 없는 기록은 건너뜀');
+  assert.deepEqual(Calc.recentSteps(records, { routineId: 'r9' }), ['루틴 단계'], '루틴은 그 루틴 기준');
+  assert.equal(Calc.recentSteps(records, { category: '운동' }), null);
+  assert.equal(Calc.recentSteps(records, { routineId: 'r1', category: '과제' }), null, '루틴 기록과 다른 활동 기록은 섞지 않음');
+});
+
+test('단계: 합계는 시간이 정수로 적힌 단계만 더한다', () => {
+  assert.equal(Calc.sumSteps([{ min: '20' }, { min: 40 }, { min: '' }, { min: 'x' }, { min: '1.5' }]), 60);
+  assert.equal(Calc.sumSteps([]), 0);
+});
+
+test('단계: 저장소 검사 (이름·시간, 개수 제한, 없어도 됨)', () => {
+  const d = Store.empty();
+  d.records.push(rec({ steps: [{ name: '자료 찾기', min: 20 }, { name: '초안', min: 40 }], estimateMin: 60 }));
+  assert.equal(Store.validate(d), true);
+  const bad = (steps) => { const x = Store.empty(); x.records.push(rec({ steps })); return Store.validate(x); };
+  assert.equal(bad([]), false, '빈 목록은 쓰지 않음');
+  assert.equal(bad([{ name: '', min: 10 }]), false);
+  assert.equal(bad([{ name: '가', min: 0 }]), false);
+  assert.equal(bad([{ name: '가'.repeat(31), min: 5 }]), false);
+  assert.equal(bad(new Array(13).fill({ name: '가', min: 5 })), false);
+  assert.equal(bad('단계'), false);
+});
+
 test('상황 루틴: 저장소 검사 (perWeek 없음, 상황 버튼 기록)', () => {
   const d = Store.empty();
   d.routines.push({ id: 'r1', name: '정리', category: '생활', perWeek: null, baseMin: 10, minMin: 5,

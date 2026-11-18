@@ -211,6 +211,20 @@
     }
     return null;
   }
+  /* 예상을 단계로 나눌 때: 같은 활동(루틴 하나 / 다른 활동은 카테고리 하나)에서 가장 최근에 쓴 단계.
+   * 이름만 돌려준다 (시간은 그때그때 사용자가 직접 정함) */
+  var MAX_STEPS = 12;
+  function recentSteps(records, opts) {
+    var rs = records.filter(function (r) {
+      if (!r.steps || !r.steps.length) return false;
+      return opts.routineId ? r.routineId === opts.routineId : (!r.routineId && r.category === opts.category);
+    }).sort(byStart);
+    return rs.length ? rs[rs.length - 1].steps.map(function (t) { return t.name; }) : null;
+  }
+  /* 단계 합계: 시간이 정수로 적힌 단계만 더한다 */
+  function sumSteps(rows) {
+    return rows.reduce(function (a, t) { var m = Number(t.min); return a + (Number.isInteger(m) && m > 0 ? m : 0); }, 0);
+  }
   function predict(planMin, cal) { return cal ? round5(planMin * cal.ratio) : planMin; }
 
   /* 'fits' 들어가요 / 'min' 최소 시간만큼만 / 'tight' 빠듯해요 */
@@ -756,7 +770,7 @@
     DEFAULT_HOLIDAY_OFF: DEFAULT_HOLIDAY_OFF, holidayOff: holidayOff, holidayName: holidayName, blocksForDay: blocksForDay,
     upcomingHolidays: upcomingHolidays, validHolidays: validHolidays,
     dayBlocks: dayBlocks, computeGaps: computeGaps, findOverlaps: findOverlaps,
-    ratioOf: ratioOf, calibration: calibration, lastChange: lastChange, finished: finished, quantile: quantile, backtest: backtest, boxOf: boxOf, activityStats: activityStats, predict: predict, fit: fit, categoryStats: categoryStats,
+    ratioOf: ratioOf, calibration: calibration, lastChange: lastChange, finished: finished, quantile: quantile, backtest: backtest, boxOf: boxOf, activityStats: activityStats, predict: predict, recentSteps: recentSteps, sumSteps: sumSteps, MAX_STEPS: MAX_STEPS, fit: fit, categoryStats: categoryStats,
     anchorToday: anchorToday, pickGap: pickGap,
     weekDone: weekDone, doneOn: doneOn, countsAsDone: countsAsDone, lastWeeks: lastWeeks, missedYesterday: missedYesterday, weekTight: weekTight,
     actualMinutes: actualMinutes, delayMinutes: delayMinutes, compareHalves: compareHalves,

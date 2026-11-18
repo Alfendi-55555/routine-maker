@@ -24,6 +24,7 @@
     routine: null,        // 루틴 탭에서 상세로 연 루틴 id (#routine-<id>)
     editWhere: 'review',  // 기록 고치기 칸을 연 곳: review | detail
     recLimit: { id: null, n: 10 },
+    steps: {},            // 예상을 단계로 나눈 입력 상태 { task, panel }
     revWeek: null,
     gapOpen: null,
     gapHelp: false,       // 예상과 실제 안내를 펼쳤는지        // 돌아보기 예상과 실제에서 펼친 다른 활동 카테고리        // 돌아보기에 보이는 주 (월요일) // 루틴 상세 기록 목록에 보이는 개수
@@ -742,6 +743,9 @@
     const delay = C.delayMinutes(a.plannedStartAt, a.startedAt);
     if (delay != null) bits.push(delay === 0 ? '제때 시작' : '예정보다 ' + delay + '분 늦게 시작');
     $('activeMeta').textContent = bits.join(' · ');
+    const stepsLine = $('activeSteps');
+    stepsLine.hidden = !(a.steps && a.steps.length);
+    stepsLine.textContent = a.steps ? '단계 ' + a.steps.map((t) => t.name + ' ' + t.min + '분').join(' · ') : '';
     stepTimer();
     timerTick = setInterval(stepTimer, 1000);
   }
@@ -861,6 +865,7 @@
     };
     if (a.minMin) rec.minMin = a.minMin;
     if (a.appMin) rec.appMin = a.appMin;
+    if (a.steps) rec.steps = a.steps;
     state.records.push(rec);
     state.active = null;
     if (commit()) showStatus('info', q(rec.name) + ' 기록했어요. 실제 ' + actual + '분 걸렸어요.', recordSummary(rec, routine));
@@ -938,6 +943,7 @@
         plannedStartAt: a.plannedStartAt || null, startedAt: a.startedAt, endedAt: end.toISOString(), source: 'timer', outcome: 'stopped'
       };
       if (a.appMin) rec.appMin = a.appMin;
+      if (a.steps) rec.steps = a.steps;
       state.records.push(rec);
       state.active = null;
       if (commit()) showStatus('info', q(rec.name) + ' 그만둔 일로 남겼어요.', actual + '분 하고 그만뒀어요. 횟수와 예상 비교에서는 빠져요.');
@@ -1138,9 +1144,13 @@
   }
 
   /* 다른 활동(반복하지 않는 일) 기록하기: 입력칸을 화면 위 창으로 */
+  function taskStepsOpts() {
+    return { estId: 'tEstimate', routineId: null, category: () => $('tCategory').value.trim() || '기타', label: () => $('tCategory').value.trim() || '기타' };
+  }
   function openOtherDialog() {
     const from = document.activeElement;
     openEditDialog('taskForm', '다른 활동 기록하기', () => (state.active ? $('activeTitle') : from && document.contains(from) ? from : $('btnOther')), null);
+    renderStepsBox('tSteps', 'task', taskStepsOpts());
     updateTaskHint();
   }
 
@@ -1338,6 +1348,7 @@
   }
 
   function openPanel(routineId, mode) {
+    resetSteps('panel');
     ui.panel = { routineId, mode, where: ui.tab === 'routines' ? 'routines' : 'today' };
     renderToday();
     renderRoutines();
@@ -1347,6 +1358,7 @@
   function closePanel(routineId) {
     const where = ui.panel && ui.panel.where;
     ui.panel = null;
+    resetSteps('panel');
     renderToday();
     renderRoutines();
     if (where === 'routines') { const b = $('rdStart') || $('rdTitle'); if (b) b.focus(); return; }
@@ -1375,6 +1387,7 @@
         h('input', { id: 'pEst', inputmode: 'numeric', autocomplete: 'off', value: String(r.baseMin), 'aria-describedby': 'pEstHint pEstErr' }),
         h('p', { class: 'hint', id: 'pEstHint' }, '셀 수 없는 일이라 그날 내용을 보고 예상을 적어요. 예상과 실제의 차이로 변화를 봐요.'),
         h('p', { class: 'err', id: 'pEstErr' })));
+      fields.push(stepsBox('panel', { estId: 'pEst', routineId: r.id, category: () => r.category, label: () => r.name, resetEst: String(r.baseMin) }));
     }
     if (manual && r.measure.type === 'count') {
       fields.push(h('div', { class: 'field' },
@@ -1390,13 +1403,16 @@
       ev.preventDefault();
       clearErrs(form);
       const errs = [];
+      const steps = $('pEst') ? readSteps('panel') : null;
+      if (steps === false) return;
+      if (steps === null && $('pEst')) syncStepsEstimate('panel', 'pEst');
       if (manual) errs.push(setErr('pAct', C.checkMinutes($('pAct').value)));
       if ($('pEst')) errs.push(setErr('pEst', C.checkMinutes($('pEst').value)));
       if ($('pAmt') && $('pAmt').value.trim() !== '') errs.push(setErr('pAmt', C.checkAmount($('pAmt').value)));
       if (focusFirst(errs)) return;
       const estimate = $('pEst') ? Number($('pEst').value) : r.baseMin;
-      if (manual) saveManualRoutine(r, Number($('pAct').value), $('pAmt') && $('pAmt').value.trim() ? Number($('pAmt').value) : null, estimate, Number($('pDay').value));
-      else startRoutine(r, estimate);
+      if (manual) saveManualRoutine(r, Number($('pAct').value), $('pAmt') && $('pAmt').value.trim() ? Number($('pAmt').value) : null, estimate, Number($('pDay').value), steps);
+      else startRoutine(r, estimate, steps);
     });
     return form;
   }
@@ -1407,7 +1423,7 @@
     startRoutine(r, r.baseMin);
   }
 
-  function startRoutine(r, estimateMin) {
+  function startRoutine(r, estimateMin, steps) {
     if (state.active) { blockedByActive(); return; }
     const now = new Date();
     const L = nowL();
@@ -1422,24 +1438,151 @@
       estimateMin, plannedStartAt: planned, startedAt: now.toISOString()
     };
     if (minFor(r)) state.active.minMin = minFor(r);
+    if (steps) state.active.steps = steps;
     state.active.appMin = C.predict(estimateMin, routineCal(r));
     ui.panel = null;
+    resetSteps('panel');
     if (commit()) showStatus('info', q(r.name) + ' 시작했어요.', (minFor(r) ? '최소 ' + minFor(r) + '분을 넘기면 한 번으로 세요. ' : '') + '새로고침하거나 탭을 닫아도 시작 시각부터 이어서 계산해요.');
     renderAll();
     $('activeTitle').focus();
   }
 
-  function saveManualRoutine(r, actual, amount, estimate, daysAgo) {
+  function saveManualRoutine(r, actual, amount, estimate, daysAgo, steps) {
     const rec = Object.assign({
       id: uid('t'), kind: 'routine', routineId: r.id, name: r.name, category: r.category, version: 'base',
       estimateMin: estimate, actualMin: actual, amount: amountFor(r, amount), plannedStartAt: null, source: 'manual'
     }, manualSpan(daysAgo || 0, actual));
     if (minFor(r)) rec.minMin = minFor(r);
+    if (steps) rec.steps = steps;
     state.records.push(rec);
     ui.panel = null;
+    resetSteps('panel');
     if (commit()) showStatus('info', q(r.name) + ' ' + (daysAgo ? ['', '어제', '그저께'][daysAgo] + ' 기록으로 ' : '') + '저장했어요. 실제 ' + actual + '분 걸렸어요.', recordSummary(rec, r));
     renderAll();
     ($(ui.tab === 'routines' ? 'rdTitle' : 'todayH') || $('tab-' + ui.tab)).focus();
+  }
+
+  // ---------- 예상을 단계로 나누기 ----------
+  /* 한 번의 시행 안에서 쓰는 선택 기능. 단계 합계가 그 시행의 예상 시간이 된다.
+   * 상태는 key마다 ui.steps[key] = { open, rows: [{ name, min }] } */
+  function stepsOf(key) { return ui.steps[key] || (ui.steps[key] = { open: false, rows: [] }); }
+  function resetSteps(key) { ui.steps[key] = { open: false, rows: [] }; }
+  /* 예상 시간 칸: 단계가 있으면 합계로 채우고 잠근다 */
+  function syncStepsEstimate(key, estId) {
+    const st = stepsOf(key), est = $(estId);
+    if (!est) return;
+    const on = st.open && st.rows.length > 0;
+    est.readOnly = on;
+    est.classList.toggle('derived', on);
+    if (on) {
+      const sum = C.sumSteps(st.rows);
+      est.value = sum ? String(sum) : '';
+      if (est.getAttribute('aria-invalid')) setErr(estId, '');
+    }
+    const tot = $(key + 'Total');
+    if (tot) {
+      const sum = C.sumSteps(st.rows);
+      const blank = st.rows.filter((t) => !(Number.isInteger(Number(t.min)) && Number(t.min) > 0)).length;
+      tot.replaceChildren(...['합계 ', h('b', null, sum + '분'), blank ? h('span', { class: 'sub' }, ' · 시간이 빈 단계 ' + blank + '개') : null].filter(Boolean));
+    }
+    if (key === 'task') updateTaskHint();
+  }
+  /* o: { estId, routineId, category: () => 카테고리 이름, label: () => 제안 문구에 쓸 활동 이름 } */
+  function stepsBox(key, o) {
+    const st = stepsOf(key);
+    const box = h('div', { class: 'step-box', id: key + 'Steps' });
+    const rerender = (focusSel) => {
+      box.replaceWith(stepsBox(key, o));
+      syncStepsEstimate(key, o.estId);
+      if (focusSel) { const el = $(key + 'Steps').querySelector(focusSel); if (el) el.focus(); }
+    };
+    const recent = () => C.recentSteps(state.records, { routineId: o.routineId, category: o.category() });
+    if (!st.open) {
+      box.append(h('button', {
+        type: 'button', class: 'steps-open', 'aria-expanded': 'false',
+        onclick: () => {
+          st.open = true;
+          const has = recent();
+          if (!has && !st.rows.length) st.rows.push({ name: '', min: '' });
+          rerender(has ? '.steps-use' : '.step-name');
+        }
+      }, svgIcon(ICON_STEPS, 15), '단계로 나눠서 예상하기'));
+      return box;
+    }
+    const last = st.rows.length ? null : recent();
+    box.append(h('div', { class: 'steps-head' }, h('b', null, '단계'),
+      h('button', {
+        type: 'button', class: 'steps-close',
+        onclick: () => {
+          resetSteps(key);
+          const est = $(o.estId);
+          est.readOnly = false; est.classList.remove('derived'); est.value = o.resetEst || '';
+          rerender();
+          est.focus();
+        }
+      }, '단계 없애기')));
+    if (last) {
+      box.append(h('div', { class: 'steps-sug' },
+        h('span', null, svgIcon(ICON_HISTORY, 14), '지난 ' + q(o.label()) + '에서는 이렇게 나눴어요'),
+        h('span', { class: 'rtags' }, last.map((n) => h('span', { class: 'rtag' }, n))),
+        h('span', { class: 'row' },
+          h('button', { type: 'button', class: 'btn small primary steps-use', onclick: () => { st.rows = last.map((n) => ({ name: n, min: '' })); rerender('.step-min'); } }, '이대로 쓰기'),
+          h('button', { type: 'button', class: 'btn small ghost', onclick: () => { st.rows = [{ name: '', min: '' }]; rerender('.step-name'); } }, '직접 나누기'))));
+    }
+    if (st.rows.length) {
+      box.append(h('ul', { class: 'plain step-list' }, st.rows.map((t, i) => {
+        const nameIn = h('input', { class: 'step-name', value: t.name, maxlength: '30', autocomplete: 'off', placeholder: '단계 ' + (i + 1), 'aria-label': '단계 ' + (i + 1) + ' 이름' });
+        const minIn = h('input', { class: 'step-min', value: t.min, inputmode: 'numeric', autocomplete: 'off', placeholder: '분', 'aria-label': '단계 ' + (i + 1) + ' 시간 (분)' });
+        nameIn.addEventListener('input', () => { t.name = nameIn.value; nameIn.removeAttribute('aria-invalid'); });
+        minIn.addEventListener('input', () => { t.min = minIn.value; minIn.removeAttribute('aria-invalid'); syncStepsEstimate(key, o.estId); });
+        const del = h('button', {
+          type: 'button', class: 'step-del', 'aria-label': '단계 ' + (i + 1) + ' 지우기',
+          onclick: () => {
+            st.rows.splice(i, 1);
+            rerender(st.rows.length ? '.step-list li:nth-child(' + Math.min(i + 1, st.rows.length) + ') .step-name' : '.steps-use, .steps-sug .btn');
+          }
+        }, svgIcon(ICON_X, 14));
+        return h('li', { class: 'step-row' }, nameIn, minIn, del);
+      })));
+      if (st.rows.length < C.MAX_STEPS) {
+        box.append(h('button', { type: 'button', class: 'steps-add', onclick: () => { st.rows.push({ name: '', min: '' }); rerender('.step-list li:last-child .step-name'); } }, svgIcon(ICON_PLUS, 14), '단계 추가'));
+      }
+      box.append(h('p', { class: 'steps-total', id: key + 'Total', 'aria-live': 'polite' }));
+    }
+    box.append(h('p', { class: 'err', id: key + 'StepsErr' }));
+    return box;
+  }
+  function renderStepsBox(hostId, key, o) {
+    $(hostId).replaceChildren(stepsBox(key, o));
+    syncStepsEstimate(key, o.estId);
+  }
+  /* 제출 전 정리와 검사: 빈 단계는 버리고 이름·시간이 모두 있는지 본다. 단계를 안 쓰면 null, 잘못이면 false */
+  function readSteps(key) {
+    const st = stepsOf(key);
+    if (!st.open) return null;
+    st.rows = st.rows.filter((t) => t.name.trim() || String(t.min).trim());
+    const box = $(key + 'Steps'), errEl = $(key + 'StepsErr');
+    const fail = (msg, el) => {
+      if (errEl) errEl.textContent = msg;
+      if (el) { el.setAttribute('aria-invalid', 'true'); el.focus(); }
+      return false;
+    };
+    if (errEl) errEl.textContent = '';
+    if (!st.rows.length) return null;
+    const lis = box ? [...box.querySelectorAll('.step-list li')] : [];
+    for (let i = 0; i < st.rows.length; i++) {
+      const t = st.rows[i];
+      if (!t.name.trim()) return fail('단계 ' + (i + 1) + '의 이름을 적어 주세요', lis[i] && lis[i].querySelector('.step-name'));
+      const m = C.checkMinutes(String(t.min));
+      if (m) return fail('단계 ' + (i + 1) + ': ' + m, lis[i] && lis[i].querySelector('.step-min'));
+    }
+    return st.rows.map((t) => ({ name: t.name.trim(), min: Number(t.min) }));
+  }
+
+  /* 기록 줄 표시: 단계로 나눠 예상한 기록 (눌러 볼 것 없이 마우스를 올리면 단계가 보인다) */
+  function stepsTag(rec) {
+    if (!rec.steps || !rec.steps.length) return null;
+    return h('span', { class: 'tag', title: rec.steps.map((t) => t.name + ' ' + t.min + '분').join(' · ') }, '단계 ' + rec.steps.length);
   }
 
   // ---------- 다른 활동 ----------
@@ -1472,6 +1615,9 @@
     };
     $('tManual').addEventListener('change', toggle);
     ['tCategory', 'tEstimate'].forEach((id) => $(id).addEventListener('input', updateTaskHint));
+    // 카테고리를 바꾸면 "지난 단계" 제안도 그 카테고리 기준으로 다시
+    $('tCategory').addEventListener('input', () => { if (!stepsOf('task').rows.length) renderStepsBox('tSteps', 'task', taskStepsOpts()); });
+    renderStepsBox('tSteps', 'task', taskStepsOpts());
     ['tName', 'tCategory', 'tEstimate', 'tActual'].forEach((id) => $(id).addEventListener('input', () => {
       if ($(id).getAttribute('aria-invalid')) setErr(id, '');
     }));
@@ -1481,6 +1627,10 @@
       const form = $('taskForm');
       clearErrs(form);
       const manual = $('tManual').checked;
+      const steps = readSteps('task');
+      if (steps === false) return;
+      // 단계를 모두 비웠으면 보통 입력으로 돌아간다
+      if (steps === null) syncStepsEstimate('task', 'tEstimate');
       const errs = [
         setErr('tName', C.checkName($('tName').value)),
         setErr('tCategory', C.checkCategory($('tCategory').value)),
@@ -1500,6 +1650,7 @@
           id: uid('t'), kind: 'task', routineId: null, name, category, version: null, estimateMin: est, actualMin: act,
           amount: null, plannedStartAt: null, source: 'manual'
         }, manualSpan(Number($('tDay').value) || 0, act));
+        if (steps) rec.steps = steps;
         state.records.push(rec);
         if (commit()) showStatus('info', q(name) + ' 기록했어요.', recordSummary(rec, null));
       } else {
@@ -1508,12 +1659,16 @@
           appMin: C.predict(est, C.calibration(state.records, { category })),
           plannedStartAt: null, startedAt: now.toISOString()
         };
+        if (steps) state.active.steps = steps;
         if (commit()) showStatus('info', q(name) + ' 시작했어요.', '새로고침하거나 탭을 닫아도 시작 시각부터 이어서 계산해요.');
       }
       $('tName').value = '';
       $('tEstimate').value = '';
       $('tActual').value = '';
       $('tManual').checked = false;
+      resetSteps('task');
+      renderStepsBox('tSteps', 'task', taskStepsOpts());
+      $('tEstimate').readOnly = false; $('tEstimate').classList.remove('derived');
       toggle();
       renderAll();
       if (dialog) closeEditDialog(); // 창은 닫고, 초점은 시작했으면 하는 중 카드, 아니면 다른 활동 버튼으로
@@ -1551,6 +1706,10 @@
   const ICON_REPEAT = 'M4 12V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 12v3a3 3 0 0 1-3 3H4M7 21l-3-3 3-3';
   const ICON_TIMER = 'M5 13a7 7 0 1 0 14 0a7 7 0 0 0-14 0zM14.5 10.5L12 13M17 8l1-1M14 3h-4';
   const ICON_CATEGORY = 'M4 6h16M4 12h10M4 18h6';
+  const ICON_STEPS = 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01';
+  const ICON_HISTORY = 'M12 8v4l2 2M3.05 11a9 9 0 1 1 .5 4M3 4v7h7';
+  const ICON_PLUS = 'M12 5v14M5 12h14';
+  const ICON_X = 'M18 6L6 18M6 6l12 12';
   const ICON_SPROUT = 'M12 21v-8M12 13C12 9 9.5 6.5 5 6.5 5 10.5 7.5 13 12 13ZM12 13C12 9.5 14.5 7.5 19 7.5 19 11 16.5 13 12 13Z';
 
   // ========== 루틴 ==========
@@ -1884,7 +2043,7 @@
       const li = h('li', { id: 'rrec-' + x.id },
         h('div', { class: 'rd-rec' },
           h('span', null, dateText(x.startedAt) + ' ', h('span', { class: 'num' }, clockText(x.startedAt))),
-          h('span', null, h('b', null, x.actualMin + '분'), !C.finished(x) ? h('span', { class: 'tag' }, '그만둠') : C.countsAsDone(x) ? null : h('span', { class: 'tag' }, '최소 미만'), x.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null),
+          h('span', null, h('b', null, x.actualMin + '분'), !C.finished(x) ? h('span', { class: 'tag' }, '그만둠') : C.countsAsDone(x) ? null : h('span', { class: 'tag' }, '최소 미만'), x.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null, stepsTag(x)),
           pencilBtn(q(x.name) + ' ' + dateText(x.startedAt) + ' 기록 고치기', () => (ui.editRecord === x.id ? closeRecordEdit(x.id) : openRecordEdit(x.id, 'detail')), 'edit')));
       if (ui.editRecord === x.id && ui.editWhere === 'detail') li.append(recordEditForm(x, r));
       return li;
@@ -2624,7 +2783,7 @@
         h('span', { class: 'rec-name' }, r.name),
         h('span', { class: 'rec-times' }, r.estimateMin + '→' + r.actualMin + '분'),
         h('span', { class: 'rec-meta' }, r.category + ' · ' + dateText(r.startedAt) + ' ' + clockText(r.startedAt),
-          r.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null, !C.finished(r) ? h('span', { class: 'tag' }, '그만둠') : null),
+          r.source === 'manual' ? h('span', { class: 'tag' }, '직접 입력') : null, !C.finished(r) ? h('span', { class: 'tag' }, '그만둠') : null, stepsTag(r)),
         h('span', { class: 'rec-del' }, pencilBtn(q(r.name) + ' ' + dateText(r.startedAt) + ' 기록 고치기', () => (ui.editRecord === r.id ? closeRecordEdit(r.id) : openRecordEdit(r.id, 'review')), 'edit')));
       if (ui.editRecord === r.id && ui.editWhere === 'review') li.append(recordEditForm(r, null));
       return li;

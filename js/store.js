@@ -81,6 +81,8 @@
       // 기본·최소 시간을 바꾼 이력 (없어도 됨)
       (r.history == null || (Array.isArray(r.history) && r.history.every(validChange)));
   }
+  var MAX_STEPS = 12;
+  function validStep(t) { return !!t && isStr(t.name, 30) && isPos(t.min, 720); }
   function validEntry(e, finished) {
     if (!e || !isStr(e.id) || (e.kind !== 'routine' && e.kind !== 'task')) return false;
     if (!isStr(e.name, 50) || !isStr(e.category, 20) || !isPos(e.estimateMin, 720) || !isDate(e.startedAt)) return false;
@@ -90,6 +92,8 @@
     if (e.minMin != null && !isPos(e.minMin, 720)) return false;
     // 시작할 때 앱이 기록을 보고 예상한 시간 (없어도 됨)
     if (e.appMin != null && !isPos(e.appMin, 2000)) return false;
+    // 예상을 단계로 나눴다면 그 단계 (없어도 됨): 이름과 예상 분
+    if (e.steps != null && !(Array.isArray(e.steps) && e.steps.length >= 1 && e.steps.length <= MAX_STEPS && e.steps.every(validStep))) return false;
     // 끝까지 하지 않고 그만둔 일 (없으면 끝낸 일)
     if (e.outcome != null && e.outcome !== 'stopped') return false;
     if (!finished) return true;
