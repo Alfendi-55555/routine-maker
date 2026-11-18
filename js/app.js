@@ -25,6 +25,8 @@
     editWhere: 'review',  // 기록 고치기 칸을 연 곳: review | detail
     recLimit: { id: null, n: 10 },
     steps: {},            // 예상을 단계로 나눈 입력 상태 { task, panel }
+    tt: null,             // 시간표 사진으로 넣기 상태 { stage: pick|busy|review|error, preview, rows, msg }
+    ttReturn: null,
     revWeek: null,
     gapOpen: null,
     gapHelp: false,       // 예상과 실제 안내를 펼쳤는지        // 돌아보기 예상과 실제에서 펼친 다른 활동 카테고리        // 돌아보기에 보이는 주 (월요일) // 루틴 상세 기록 목록에 보이는 개수
@@ -528,15 +530,16 @@
     const formBox = h('div', { class: 'blocks-edit' }, head);
     formBox.append(form);
     const addBtn = h('button', { type: 'button', class: 'new-btn' + (sel === 'new' ? ' on' : ''), id: 'btnNewBlock', onclick: () => { selectBlock('new'); $('bName').focus(); } }, '+ 새 고정 일정');
+    const ttBtn = h('button', { type: 'button', class: 'new-btn tt-btn', onclick: openTimetable }, svgIcon(ICON_IMAGE, 15), '시간표 사진으로 넣기');
     const list = h('ul', { class: 'plain blk-list' }, items);
     if (isWide()) {
-      $('blocksList').replaceChildren(list, addBtn);
+      $('blocksList').replaceChildren(list, ttBtn, addBtn);
       $('blocksFormHost').replaceChildren(formBox);
     } else {
       // 휴대폰: 고른 줄 바로 아래에 고치기 칸, 새로 넣기는 맨 아래
       const li = sel === 'new' ? null : [...list.children].find((n) => n.querySelector('[aria-current="true"]'));
       if (li) li.append(formBox);
-      $('blocksList').replaceChildren(list, addBtn, sel === 'new' ? formBox : '');
+      $('blocksList').replaceChildren(list, ttBtn, addBtn, sel === 'new' ? formBox : '');
       $('blocksFormHost').replaceChildren();
     }
   }
@@ -1036,6 +1039,7 @@
         '수업·통학·알바처럼 매주 같은 시간에 하는 일부터 넣어 보세요. 그걸 빼고 남는 시간이 빈 시간이 돼요.',
         h('div', { class: 'row' },
           h('button', { type: 'button', class: 'btn primary', onclick: openNewBlock }, '고정 일정 넣기'),
+          h('button', { type: 'button', class: 'btn', onclick: openTimetable }, '시간표 사진으로 넣기'),
           hasAnyData() ? null : h('a', { class: 'btn ghost', href: 'intro.html' }, '처음이라면 앱 소개 보기'))));
     } else {
       nodes.push(dayCard(todays, gaps, L.nowMin, infos));
@@ -1650,6 +1654,162 @@
     return h('span', { class: 'tag', title: rec.steps.map((t) => t.name + ' ' + t.min + '분').join(' · ') }, '단계 ' + rec.steps.length);
   }
 
+  // ---------- 시간표 사진으로 고정 일정 넣기 ----------
+  /* 사진 한 장을 줄여서 서버 함수(/api/timetable)에 보내 수업 칸을 읽고, 후보를 확인·수정한 뒤 한꺼번에 넣는다.
+   * 끝 시각은 칸 높이로 짐작한 값이라 틀릴 수 있어서, 넣기 전에 반드시 사용자가 고칠 수 있게 한다 */
+  const TT_DAYS = [['월', 1], ['화', 2], ['수', 3], ['목', 4], ['금', 5], ['토', 6], ['일', 0]];
+  function openTimetable() {
+    ui.ttReturn = document.activeElement;
+    ui.tt = { stage: 'pick', preview: null, rows: [], msg: '' };
+    renderTimetable();
+    const dlg = $('ttDialog');
+    if (!dlg.open) { if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', ''); }
+    const first = $('ttPick'); if (first) first.focus();
+  }
+  function closeTimetable() {
+    const tt = ui.tt;
+    if (!tt) return;
+    if (tt.preview) URL.revokeObjectURL(tt.preview);
+    ui.tt = null;
+    const dlg = $('ttDialog');
+    if (dlg.open) { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
+    $('ttBody').replaceChildren();
+    if (blocksOpen()) renderBlocksDialog();
+    // 고정 일정 편집 창에서 열었다면 목록을 다시 그렸으니 새 단추로 초점을 돌려준다
+    const back = ui.ttReturn;
+    const target = back && document.contains(back) ? back : (blocksOpen() ? document.querySelector('#blocksList .tt-btn') : null);
+    if (target) target.focus();
+  }
+  /* 휴대폰 화면 캡처는 크니까 브라우저에서 줄여서 보낸다 (긴 쪽 2000px 이하, JPEG) */
+  async function shrinkImage(file, objectUrl) {
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => { const e = new Error('image'); e.name = 'EncodingError'; reject(e); };
+      img.src = objectUrl;
+    });
+    const s = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * s)); c.height = Math.max(1, Math.round(img.naturalHeight * s));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    let url = '';
+    for (const q of [0.85, 0.7, 0.55]) { url = c.toDataURL('image/jpeg', q); if (url.length < 3400000) break; }
+    return url;
+  }
+  async function readTimetable(file) {
+    const tt = ui.tt;
+    if (!tt || tt.stage === 'busy') return;
+    if (!/^image\//.test(file.type)) { tt.stage = 'error'; tt.msg = '사진 파일(JPG·PNG)을 골라 주세요.'; renderTimetable(); return; }
+    if (tt.preview) URL.revokeObjectURL(tt.preview);
+    tt.preview = URL.createObjectURL(file);
+    tt.stage = 'busy'; tt.msg = '';
+    renderTimetable();
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 40000); // 서버 함수는 28초에서 끊는다
+    let blocks = null, fail = '';
+    try {
+      const image = await shrinkImage(file, tt.preview);
+      const r = await fetch('/api/timetable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image }), signal: ctl.signal });
+      let data = null;
+      try { data = await r.json(); } catch (e) { data = null; }
+      if (r.ok && data && Array.isArray(data.blocks)) blocks = data.blocks;
+      else fail = (data && data.message) || ([404, 405, 501].includes(r.status) ? '이 주소에서는 사진으로 넣을 수 없어요 (서버 함수가 없어요). 배포된 주소에서 써 주세요.' : 'AI 응답을 받지 못했어요. 잠시 뒤에 다시 해 주세요.');
+    } catch (e) {
+      fail = e && e.name === 'AbortError' ? 'AI 응답이 너무 늦어요. 잠시 뒤에 다시 해 주세요.' : e && e.name === 'EncodingError' ? '사진을 열 수 없어요. 다른 사진으로 해 주세요.' : '연결할 수 없어요. 직접 넣어 주세요.';
+    } finally { clearTimeout(timer); }
+    if (ui.tt !== tt) return; // 그 사이 창을 닫았다면 버린다
+    if (!blocks || !blocks.length) { tt.stage = 'error'; tt.msg = fail || '시간표를 읽지 못했어요.'; renderTimetable(); return; }
+    tt.rows = blocks.map((b) => {
+      const dup = state.blocks.some((x) => x.name === b.name && x.start === b.start && x.end === b.end && b.days.every((d) => x.days.includes(d)));
+      return { on: !dup, dup, name: b.name, kind: KIND_ORDER.includes(b.kind) ? b.kind : '수업', days: b.days.slice(), start: b.start, end: b.end, err: '' };
+    });
+    tt.stage = 'review'; tt.msg = '';
+    renderTimetable();
+    const first = $('ttBody').querySelector('.tt-row input[type="text"]'); if (first) first.focus();
+  }
+  function renderTimetable() {
+    const tt = ui.tt, body = $('ttBody');
+    if (!tt || !body) return;
+    const put = (...nodes) => body.replaceChildren(...nodes.filter(Boolean)); // 빈 칸(null)이 글자로 찍히지 않게
+    const preview = tt.preview ? h('img', { class: 'tt-preview', src: tt.preview, alt: '고른 시간표 사진' }) : null;
+    if (tt.stage === 'pick' || tt.stage === 'error') {
+      const file = h('input', { type: 'file', id: 'ttFile', accept: 'image/*', hidden: true });
+      file.addEventListener('change', () => { if (file.files && file.files[0]) readTimetable(file.files[0]); });
+      put(
+        h('p', { class: 'sub' }, '시간표 앱 화면을 캡처한 사진을 골라 주세요. 사진 한 장이 AI로 보내져 수업 칸을 읽고, 읽은 뒤에는 버려져요. 이름이나 학번 같은 개인정보는 가리고 올려도 돼요.'),
+        h('p', { class: 'sub' }, '끝 시각은 칸의 높이로 짐작해서 틀릴 수 있어요. 읽은 뒤에 사진과 비교해서 고쳐 주세요.'),
+        tt.msg ? h('p', { class: 'err', role: 'alert' }, tt.msg) : null,
+        h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn primary', id: 'ttPick', onclick: () => file.click() }, svgIcon(ICON_IMAGE, 15), tt.stage === 'error' ? '다른 사진 고르기' : '사진 고르기'), file));
+      return;
+    }
+    if (tt.stage === 'busy') {
+      put(preview, h('p', { class: 'tt-busy', role: 'status' }, '시간표를 읽는 중이에요… 10초쯤 걸려요.'));
+      return;
+    }
+    // review
+    const count = () => tt.rows.filter((r) => r.on).length;
+    const submit = h('button', { type: 'button', class: 'btn primary', id: 'ttSubmit' }, count() + '개 넣기');
+    const sync = () => { submit.textContent = count() + '개 넣기'; };
+    const list = h('ul', { class: 'plain tt-list' }, tt.rows.map((r, i) => {
+      const on = h('input', { type: 'checkbox', checked: r.on, 'aria-label': '이 일정 넣기' });
+      on.addEventListener('change', () => { r.on = on.checked; sync(); });
+      const name = h('input', { type: 'text', value: r.name, maxlength: '50', autocomplete: 'off', 'aria-label': '일정 이름', class: 'tt-name' });
+      name.addEventListener('input', () => { r.name = name.value; });
+      const kind = h('select', { 'aria-label': '종류' }, KIND_ORDER.map((k) => h('option', { value: k, selected: k === r.kind }, k)));
+      kind.addEventListener('change', () => { r.kind = kind.value; });
+      const days = h('div', { class: 'daypick', role: 'group', 'aria-label': '요일' }, TT_DAYS.map(([label, d]) => {
+        const cb = h('input', { type: 'checkbox', checked: r.days.includes(d) });
+        cb.addEventListener('change', () => { r.days = cb.checked ? r.days.concat(d) : r.days.filter((x) => x !== d); });
+        return h('label', null, cb, h('span', null, label));
+      }));
+      const start = h('input', { type: 'time', value: r.start, 'aria-label': '시작 시각' });
+      start.addEventListener('input', () => { r.start = start.value; });
+      const end = h('input', { type: 'time', value: r.end, 'aria-label': '끝 시각 (사진에서 짐작한 값)' });
+      end.addEventListener('input', () => { r.end = end.value; });
+      return h('li', { class: 'tt-row' + (r.dup ? ' dup' : '') },
+        h('div', { class: 'tt-line' }, on, name, kind),
+        days,
+        h('div', { class: 'tt-line' }, start, h('span', null, '–'), end, r.dup ? h('span', { class: 'tag' }, '이미 있어요') : null),
+        h('p', { class: 'err', id: 'ttErr' + i, role: 'alert' }, r.err));
+    }));
+    submit.addEventListener('click', () => submitTimetable(list));
+    put(
+      h('div', { class: 'tt-top' }, preview, h('div', null,
+        h('p', { class: 'sub' }, '읽은 일정 ' + tt.rows.length + '개예요. 끝 시각은 칸 높이로 짐작한 값이라 틀릴 수 있어요. 사진과 비교해서 고친 뒤에 넣어 주세요.'),
+        h('p', { class: 'sub' }, '이미 있는 일정은 체크가 꺼져 있어요.'))),
+      list,
+      h('div', { class: 'row' }, submit, h('button', { type: 'button', class: 'btn ghost', onclick: () => { tt.stage = 'pick'; tt.rows = []; renderTimetable(); $('ttPick').focus(); } }, '다른 사진으로')));
+  }
+  function submitTimetable(list) {
+    const tt = ui.tt;
+    if (!tt) return;
+    let firstBad = null;
+    tt.rows.forEach((r, i) => {
+      r.err = '';
+      if (!r.on) return;
+      const nameErr = C.checkName(r.name), dayErr = r.days.length ? '' : '요일을 하나 이상 골라 주세요';
+      const range = nameErr || dayErr ? null : C.checkTimeRange(r.start, r.end);
+      r.err = nameErr || dayErr || (range ? range.msg : '');
+      r.errField = nameErr ? 'name' : dayErr ? 'days' : range ? range.field : '';
+      const el = list.children[i] && list.children[i].querySelector('.err');
+      if (el) el.textContent = r.err;
+      if (r.err && firstBad === null) firstBad = i;
+    });
+    if (firstBad !== null) {
+      const row = list.children[firstBad], field = tt.rows[firstBad].errField;
+      const f = field === 'days' ? row.querySelector('.daypick input') : field === 'start' ? row.querySelectorAll('input[type="time"]')[0] : field === 'end' ? row.querySelectorAll('input[type="time"]')[1] : row.querySelector('input[type="text"]');
+      row.scrollIntoView({ block: 'nearest' });
+      if (f) f.focus();
+      return;
+    }
+    const picked = tt.rows.filter((r) => r.on);
+    if (!picked.length) { const el = list.parentElement.querySelector('#ttSubmit'); if (el) el.focus(); return; }
+    picked.forEach((r) => state.blocks.push({ id: uid('b'), name: r.name.trim(), kind: r.kind, days: DAY_ORDER.filter((d) => r.days.includes(d)), start: r.start, end: r.end }));
+    if (commit()) showStatus('info', picked.length + '개를 고정 일정에 넣었어요.', '캘린더 탭 시간표와 오늘 탭 빈 시간에서 확인해 보세요. 고치려면 고정 일정 편집에서 해요.');
+    closeTimetable();
+    renderAll();
+  }
+
   // ---------- 다른 활동 ----------
   function updateTaskHint() {
     const cat = $('tCategory').value.trim() || '기타';
@@ -1774,6 +1934,7 @@
   const ICON_STEPS = 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01';
   const ICON_HISTORY = 'M12 8v4l2 2M3.05 11a9 9 0 1 1 .5 4M3 4v7h7';
   const ICON_PLUS = 'M12 5v14M5 12h14';
+  const ICON_IMAGE = 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM8.5 9.5h.01M4 16l4-4 4 4 3-3 5 5';
   const ICON_SPARK = 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8L16.5 18.5l1.8-.7z';
   const ICON_X = 'M18 6L6 18M6 6l12 12';
   const ICON_SPROUT = 'M12 21v-8M12 13C12 9 9.5 6.5 5 6.5 5 10.5 7.5 13 12 13ZM12 13C12 9.5 14.5 7.5 19 7.5 19 11 16.5 13 12 13Z';
@@ -2536,6 +2697,8 @@
       if (dialog) closeEditDialog(); else resetBlockForm();
     });
     $('blocksClose').addEventListener('click', closeBlocks);
+    $('ttClose').addEventListener('click', closeTimetable);
+    $('ttDialog').addEventListener('close', () => { if (!$('ttDialog').open) closeTimetable(); }); // Esc
     $('blocksDialog').addEventListener('click', (ev) => { if (ev.target === $('blocksDialog')) closeBlocks(); });
     // Esc. 닫기 버튼은 바로 정리하고 close 이벤트는 늦게 올 수 있으니, 그 사이 다시 열었다면 건너뛴다
     $('blocksDialog').addEventListener('close', () => { if (!blocksOpen()) afterBlocksClosed(); });

@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "api/timetable.js": { "maxDuration": 30 }
+  }
+}

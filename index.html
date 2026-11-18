@@ -431,7 +431,7 @@
       </section>
       <section class="set-sec" aria-labelledby="dataH">
         <h2 id="dataH">기록 관리</h2>
-        <p class="sub">기록은 이 브라우저에만 저장되고 어디에도 보내지 않아요. (단계 나누기의 ‘AI 추천받기’를 누를 때만 그 할 일의 이름과 카테고리가 AI로 가요.) 기기를 바꾸거나 브라우저 데이터를 지우기 전에 내보내 두세요.</p>
+        <p class="sub">기록은 이 브라우저에만 저장되고 어디에도 보내지 않아요. (‘AI 추천받기’를 누르면 그 할 일의 이름과 카테고리가, ‘시간표 사진으로 넣기’를 하면 고른 사진 한 장이 AI로 가요. 서버에는 저장하지 않아요.) 기기를 바꾸거나 브라우저 데이터를 지우기 전에 내보내 두세요.</p>
         <div class="row">
           <button type="button" class="btn" id="btnExport">내보내기 (JSON 파일)</button>
           <button type="button" class="btn" id="btnImport">가져오기</button>
@@ -517,6 +517,14 @@
     <div class="blocks-list" id="blocksList"></div>
     <div class="blocks-form" id="blocksFormHost"></div>
   </div>
+</dialog>
+<!-- 시간표 사진으로 고정 일정 넣기: 사진 고르기 → 읽는 중 → 확인하고 고치기 -->
+<dialog id="ttDialog" class="dialog wide" aria-labelledby="ttTitle">
+  <div class="dialog-head">
+    <h2 id="ttTitle">시간표 사진으로 넣기</h2>
+    <button type="button" class="btn ghost small" id="ttClose">닫기</button>
+  </div>
+  <div id="ttBody" class="tt-body"></div>
 </dialog>
 <dialog id="editDialog" class="dialog" aria-labelledby="editDialogTitle">
   <div class="dialog-head">
