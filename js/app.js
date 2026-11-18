@@ -1145,7 +1145,10 @@
 
   /* 다른 활동(반복하지 않는 일) 기록하기: 입력칸을 화면 위 창으로 */
   function taskStepsOpts() {
-    return { estId: 'tEstimate', routineId: null, category: () => $('tCategory').value.trim() || '기타', label: () => $('tCategory').value.trim() || '기타' };
+    return {
+      estId: 'tEstimate', routineId: null, category: () => $('tCategory').value.trim() || '기타', label: () => $('tCategory').value.trim() || '기타',
+      name: () => $('tName').value.trim(), nameId: 'tName'
+    };
   }
   function openOtherDialog() {
     const from = document.activeElement;
@@ -1387,7 +1390,7 @@
         h('input', { id: 'pEst', inputmode: 'numeric', autocomplete: 'off', value: String(r.baseMin), 'aria-describedby': 'pEstHint pEstErr' }),
         h('p', { class: 'hint', id: 'pEstHint' }, '셀 수 없는 일이라 그날 내용을 보고 예상을 적어요. 예상과 실제의 차이로 변화를 봐요.'),
         h('p', { class: 'err', id: 'pEstErr' })));
-      fields.push(stepsBox('panel', { estId: 'pEst', routineId: r.id, category: () => r.category, label: () => r.name, resetEst: String(r.baseMin) }));
+      fields.push(stepsBox('panel', { estId: 'pEst', routineId: r.id, category: () => r.category, label: () => r.name, name: () => r.name, nameId: null, resetEst: String(r.baseMin) }));
     }
     if (manual && r.measure.type === 'count') {
       fields.push(h('div', { class: 'field' },
@@ -1465,8 +1468,8 @@
   // ---------- 예상을 단계로 나누기 ----------
   /* 한 번의 시행 안에서 쓰는 선택 기능. 단계 합계가 그 시행의 예상 시간이 된다.
    * 상태는 key마다 ui.steps[key] = { open, rows: [{ name, min }] } */
-  function stepsOf(key) { return ui.steps[key] || (ui.steps[key] = { open: false, rows: [] }); }
-  function resetSteps(key) { ui.steps[key] = { open: false, rows: [] }; }
+  function stepsOf(key) { return ui.steps[key] || (ui.steps[key] = { open: false, rows: [], ai: false, busy: false, msg: null, opts: null }); }
+  function resetSteps(key) { const o = ui.steps[key] && ui.steps[key].opts; ui.steps[key] = { open: false, rows: [], ai: false, busy: false, msg: null, opts: o || null }; }
   /* 예상 시간 칸: 단계가 있으면 합계로 채우고 잠근다 */
   function syncStepsEstimate(key, estId) {
     const st = stepsOf(key), est = $(estId);
@@ -1487,15 +1490,71 @@
     }
     if (key === 'task') updateTaskHint();
   }
-  /* o: { estId, routineId, category: () => 카테고리 이름, label: () => 제안 문구에 쓸 활동 이름 } */
+  /* o: { estId, routineId, category: () => 카테고리 이름, label: () => 제안 문구에 쓸 활동 이름, name: () => 할 일 이름, nameId: 이름 입력칸 id 또는 null, resetEst } */
+  function refreshSteps(key, focusSel) {
+    const st = stepsOf(key), old = $(key + 'Steps');
+    if (!old || !st.opts) return;
+    old.replaceWith(stepsBox(key, st.opts));
+    syncStepsEstimate(key, st.opts.estId);
+    if (focusSel) { const el = $(key + 'Steps').querySelector(focusSel); if (el) el.focus(); }
+  }
+  /* AI 추천받기 버튼과 안내 문구만 제자리에서 바꾼다 (입력 중인 칸을 건드리지 않게) */
+  function paintAi(key) {
+    const st = stepsOf(key), btn = $(key + 'Ai'), msg = $(key + 'AiMsg');
+    if (btn) {
+      btn.disabled = st.busy;
+      btn.setAttribute('aria-busy', String(st.busy));
+      btn.lastChild.textContent = st.busy ? '추천 받는 중…' : 'AI 추천받기';
+    }
+    if (msg) {
+      msg.className = 'steps-ai-msg ' + (st.msg && st.msg.kind === 'err' ? 'err' : 'hint');
+      msg.textContent = st.msg ? st.msg.text : '';
+    }
+  }
+  /* 서버 함수(/api/steps)에 할 일 이름과 카테고리만 보내 단계 이름을 받는다. 받은 이름은 지금 단계 뒤에 덧붙이고, 시간은 비워 둔다 */
+  async function askAi(key) {
+    const st = stepsOf(key), o = st.opts;
+    if (!o || st.busy) return;
+    const name = o.name();
+    if (!name) {
+      st.msg = { kind: 'err', text: '할 일 이름을 먼저 적어 주세요.' };
+      paintAi(key);
+      const nm = o.nameId && $(o.nameId);
+      if (nm) nm.focus();
+      return;
+    }
+    st.busy = true; st.msg = null; paintAi(key);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 25000); // 서버 함수는 20초에서 끊는다
+    let names = null, fail = '';
+    try {
+      const r = await fetch('/api/steps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, category: o.category() }), signal: ctl.signal });
+      let data = null;
+      try { data = await r.json(); } catch (e) { data = null; }
+      if (r.ok && data && Array.isArray(data.steps)) names = data.steps.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 30));
+      else fail = (data && data.message) || (r.status === 404 ? '이 주소에서는 AI 추천을 쓸 수 없어요. 직접 나눠 주세요.' : 'AI 추천을 받지 못했어요. 잠시 뒤에 다시 눌러 주세요.');
+    } catch (e) {
+      fail = e && e.name === 'AbortError' ? 'AI 응답이 너무 늦어요. 잠시 뒤에 다시 눌러 주세요. 직접 나눠도 돼요.' : '연결할 수 없어요. 직접 나눠 주세요.';
+    } finally { clearTimeout(timer); }
+    if (ui.steps[key] !== st) return; // 그 사이 단계를 없앴다면 버린다
+    st.busy = false;
+    if (!names || !names.length) { st.msg = { kind: 'err', text: fail || 'AI 추천을 받지 못했어요.' }; paintAi(key); return; }
+    st.rows = st.rows.filter((t) => t.name.trim() || String(t.min).trim());
+    const have = new Set(st.rows.map((t) => t.name.trim()));
+    const firstNew = st.rows.length;
+    names.forEach((n) => { if (!have.has(n) && st.rows.length < C.MAX_STEPS) { have.add(n); st.rows.push({ name: n, min: '' }); } });
+    const added = st.rows.length - firstNew;
+    st.ai = st.ai || added > 0;
+    const msg = { kind: 'info', text: added ? 'AI 추천 ' + added + '개를 추가했어요. 시간은 직접 적어 주세요. 단계는 고치거나 지워도 돼요.' : '새로 추가할 단계가 없었어요.' };
+    refreshSteps(key, added ? '.step-list li:nth-child(' + (firstNew + 1) + ') .step-min' : null);
+    // 새로 만든 안내 칸에 글을 넣어야 화면 읽기 프로그램이 읽어 준다
+    setTimeout(() => { if (ui.steps[key] === st) { st.msg = msg; paintAi(key); } }, 60);
+  }
   function stepsBox(key, o) {
     const st = stepsOf(key);
+    st.opts = o;
     const box = h('div', { class: 'step-box', id: key + 'Steps' });
-    const rerender = (focusSel) => {
-      box.replaceWith(stepsBox(key, o));
-      syncStepsEstimate(key, o.estId);
-      if (focusSel) { const el = $(key + 'Steps').querySelector(focusSel); if (el) el.focus(); }
-    };
+    const rerender = (focusSel) => refreshSteps(key, focusSel);
     const recent = () => C.recentSteps(state.records, { routineId: o.routineId, category: o.category() });
     if (!st.open) {
       box.append(h('button', {
@@ -1510,7 +1569,7 @@
       return box;
     }
     const last = st.rows.length ? null : recent();
-    box.append(h('div', { class: 'steps-head' }, h('b', null, '단계'),
+    box.append(h('div', { class: 'steps-head' }, h('b', null, '단계', st.ai ? h('span', { class: 'tag' }, 'AI 추천') : null),
       h('button', {
         type: 'button', class: 'steps-close',
         onclick: () => {
@@ -1549,6 +1608,12 @@
       }
       box.append(h('p', { class: 'steps-total', id: key + 'Total', 'aria-live': 'polite' }));
     }
+    // 결과 아래: AI 추천받기. 보내는 것과 보내지 않는 것을 버튼 바로 아래에 적는다
+    box.append(h('div', { class: 'steps-ai-box' },
+      h('button', { type: 'button', class: 'steps-ai', id: key + 'Ai', 'aria-busy': String(st.busy), disabled: st.busy, onclick: () => askAi(key) },
+        svgIcon(ICON_SPARK, 15), st.busy ? '추천 받는 중…' : 'AI 추천받기'),
+      h('p', { class: 'hint' }, '누르면 할 일 이름과 카테고리만 AI에 보내요. 시간은 추천하지 않아요.'),
+      h('p', { class: 'steps-ai-msg ' + (st.msg && st.msg.kind === 'err' ? 'err' : 'hint'), id: key + 'AiMsg', role: 'status' }, st.msg ? st.msg.text : '')));
     box.append(h('p', { class: 'err', id: key + 'StepsErr' }));
     return box;
   }
@@ -1709,6 +1774,7 @@
   const ICON_STEPS = 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01';
   const ICON_HISTORY = 'M12 8v4l2 2M3.05 11a9 9 0 1 1 .5 4M3 4v7h7';
   const ICON_PLUS = 'M12 5v14M5 12h14';
+  const ICON_SPARK = 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8L16.5 18.5l1.8-.7z';
   const ICON_X = 'M18 6L6 18M6 6l12 12';
   const ICON_SPROUT = 'M12 21v-8M12 13C12 9 9.5 6.5 5 6.5 5 10.5 7.5 13 12 13ZM12 13C12 9.5 14.5 7.5 19 7.5 19 11 16.5 13 12 13Z';
 

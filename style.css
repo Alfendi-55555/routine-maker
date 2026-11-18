@@ -946,3 +946,10 @@ fieldset.step { border: 0; padding: 0; margin: 0; min-width: 0; }
 .steps-total { margin: 0; text-align: right; font-size: 0.88rem; color: var(--muted); }
 .steps-total b { color: var(--ink); }
 input.derived { background: var(--chip); color: var(--muted); }
+.steps-ai-box { display: grid; gap: 4px; justify-items: start; padding-top: 8px; border-top: 1px solid var(--line); }
+.steps-ai { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-soft);
+  color: var(--accent); font: inherit; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+.steps-ai:disabled { opacity: 0.65; cursor: progress; }
+.steps-ai-box .hint { margin: 0; }
+.steps-ai-msg:empty { display: none; }
+.steps-head .tag { margin-left: 6px; }
