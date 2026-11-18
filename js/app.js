@@ -1532,7 +1532,7 @@
       let data = null;
       try { data = await r.json(); } catch (e) { data = null; }
       if (r.ok && data && Array.isArray(data.steps)) names = data.steps.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 30));
-      else fail = (data && data.message) || (r.status === 404 ? '이 주소에서는 AI 추천을 쓸 수 없어요. 직접 나눠 주세요.' : 'AI 추천을 받지 못했어요. 잠시 뒤에 다시 눌러 주세요.');
+      else fail = (data && data.message) || ([404, 405, 501].includes(r.status) ? '이 주소에서는 AI 추천을 쓸 수 없어요 (서버 함수가 없어요). 배포된 주소에서 써 주세요. 직접 나눠도 돼요.' : 'AI 추천을 받지 못했어요. 잠시 뒤에 다시 눌러 주세요.');
     } catch (e) {
       fail = e && e.name === 'AbortError' ? 'AI 응답이 너무 늦어요. 잠시 뒤에 다시 눌러 주세요. 직접 나눠도 돼요.' : '연결할 수 없어요. 직접 나눠 주세요.';
     } finally { clearTimeout(timer); }
